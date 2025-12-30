@@ -1,0 +1,85 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class SharedPreferencesService {
+  static String keyIsLogged = 'is_logged';
+  static String keyUid = 'uid';
+  static String keyEmail = 'email';
+  static String keyPhone = 'phone';
+  static String keyPhoto = 'photo_url';
+
+  static String firetoken = 'fire_token';
+  static String fcmToken = 'fcm_token';
+
+  static String keyUserInfo = 'user_info';
+
+  static String keyAccessToken = 'access_token';
+  static String keyRefreshToken = 'refresh_token';
+
+  Future<void> saveUserSession({
+    required String uid,
+    String? email,
+    String? phone,
+    String? photoUrl,
+    String? firebaseIdToken,
+    required String accessToken,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyIsLogged, true);
+    await prefs.setString(keyUid, uid);
+
+    if (email != null) await prefs.setString(keyEmail, email);
+    if (phone != null) await prefs.setString(keyPhone, phone);
+    if (photoUrl != null) await prefs.setString(keyPhoto, photoUrl);
+    if (firebaseIdToken != null) {
+      await prefs.setString(firetoken, firebaseIdToken);
+    }
+
+    // ✅ antes lo recibías pero no lo guardabas
+    await prefs.setString(keyAccessToken, accessToken);
+  }
+
+  Future<void> saveAccessToken(String accessToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyAccessToken, accessToken);
+  }
+
+  Future<String?> getAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(keyAccessToken);
+  }
+
+  Future<void> saveRefreshToken(String refreshToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyRefreshToken, refreshToken);
+  }
+
+  Future<String?> getRefreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(keyRefreshToken);
+  }
+
+  Future<void> saveUserInfo(Map<String, dynamic> userInfo) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyUserInfo, jsonEncode(userInfo));
+  }
+
+  Future<Map<String, dynamic>?> getUserInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userInfoString = prefs.getString(keyUserInfo);
+    if (userInfoString != null) {
+      return jsonDecode(userInfoString) as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  Future<bool> isLogged() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(keyIsLogged) ?? false;
+  }
+
+  Future<void> clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+}

@@ -1,0 +1,536 @@
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'models/world_level.dart';
+import 'widgets/island_level_node.dart';
+import 'widgets/sea_waves_painter.dart';
+import 'widgets/world_path_painter.dart';
+import 'widgets/cloud_widget.dart';
+
+/// ✅ Tema de fondo del History World
+class HistoryBgTheme {
+  final String name;
+  final List<Color> colors;
+
+  const HistoryBgTheme({required this.name, required this.colors});
+}
+
+class HistoryLevelsPage extends StatefulWidget {
+  const HistoryLevelsPage({super.key});
+
+  @override
+  State<HistoryLevelsPage> createState() => _HistoryLevelsPageState();
+}
+
+class _HistoryLevelsPageState extends State<HistoryLevelsPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  // ✅ Key para persistencia
+  static const String _prefsThemeIndexKey = "dd_history_bg_theme_index";
+
+  // === NIVELES DEL MUNDO (pasados, actual y futuros) ===
+  final List<WorldLevel> _levels = const [
+    WorldLevel(
+      title: 'Café',
+      date: '05/11/2024',
+      icon: Icons.local_cafe_rounded,
+      status: WorldLevelStatus.done,
+      position: Offset(0.15, 0.70),
+    ),
+    WorldLevel(
+      title: 'Cena',
+      date: '07/11/2024',
+      icon: Icons.dinner_dining_rounded,
+      status: WorldLevelStatus.done,
+      position: Offset(0.40, 0.55),
+    ),
+    WorldLevel(
+      title: 'Cine',
+      date: '09/11/2024',
+      icon: Icons.movie_rounded,
+      status: WorldLevelStatus.current,
+      position: Offset(0.65, 0.40),
+    ),
+    WorldLevel(
+      title: 'Viaje',
+      date: 'Próximamente',
+      icon: Icons.flight_takeoff_rounded,
+      status: WorldLevelStatus.locked,
+      position: Offset(0.85, 0.25),
+    ),
+  ];
+
+  // ✅ Temas disponibles (puedes agregar más)
+  static const List<HistoryBgTheme> _bgThemes = [
+    HistoryBgTheme(
+      name: "Tropical",
+      colors: [Color(0xFF33D6A6), Color(0xFF28C0F4)],
+    ),
+    HistoryBgTheme(
+      name: "Sunset",
+      colors: [Color(0xFFB85CFF), Color(0xFFFF7A59)],
+    ),
+    HistoryBgTheme(
+      name: "Night Sea",
+      colors: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
+    ),
+    HistoryBgTheme(
+      name: "Aurora",
+      colors: [Color(0xFF22C55E), Color(0xFF06B6D4)],
+    ),
+  ];
+
+  // ✅ Tema seleccionado (por defecto el 0)
+  int _themeIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // ✅ Cargar tema guardado
+    _loadThemeIndex();
+
+    // Controlador para el “rebote” suave
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+  }
+
+  Future<void> _loadThemeIndex() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idx = prefs.getInt(_prefsThemeIndexKey) ?? 0;
+
+      // validación por si cambias la lista de temas
+      final safeIdx = (idx >= 0 && idx < _bgThemes.length) ? idx : 0;
+
+      if (!mounted) return;
+      setState(() => _themeIndex = safeIdx);
+    } catch (_) {
+      // si falla, no pasa nada (se queda el default)
+    }
+  }
+
+  Future<void> _saveThemeIndex(int idx) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefsThemeIndexKey, idx);
+    } catch (_) {
+      // si falla, no bloqueamos UX
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Devuelve un offset vertical usando una onda senoidal
+  double _bounce(double phase) {
+    final t = _controller.value * 2 * pi + phase;
+    const amplitude = 6.0;
+    return sin(t) * amplitude;
+  }
+
+  void _openThemePicker() {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Tema del mundo",
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...List.generate(_bgThemes.length, (i) {
+                final t = _bgThemes[i];
+                final selected = i == _themeIndex;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () async {
+                      setState(() => _themeIndex = i);
+                      await _saveThemeIndex(i); // ✅ guardar
+                      if (mounted) Navigator.pop(ctx);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: selected
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : Colors.white.withOpacity(0.25),
+                          width: selected ? 2 : 1,
+                        ),
+                        color: theme.colorScheme.surface.withOpacity(0.08),
+                      ),
+                      child: Row(
+                        children: [
+                          // preview gradient
+                          Container(
+                            width: 58,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              gradient: LinearGradient(
+                                colors: t.colors,
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.10),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              t.name,
+                              style: textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (selected)
+                            Icon(
+                              Icons.check_circle_rounded,
+                              color: theme.colorScheme.primary,
+                            )
+                          else
+                            const Icon(Icons.circle_outlined),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final bg = _bgThemes[_themeIndex];
+
+    return Scaffold(
+      body: SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: bg.colors,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: Column(
+            children: [
+              // ================= HEADER =================
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.emoji_events_rounded, color: Colors.amber),
+                    const SizedBox(width: 8),
+                    Text(
+                      'HISTORY WORLD',
+                      style: textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+
+                    // ✅ Botón de tema
+                    IconButton(
+                      tooltip: "Cambiar tema",
+                      icon: const Icon(
+                        Icons.palette_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: _openThemePicker,
+                    ),
+
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ========== CARD USUARIO ARRIBA ==========
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFA726), Color(0xFFFF7043)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: Colors.pink.shade400,
+                        child: Text(
+                          'MT',
+                          style: textTheme.titleSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '3 con María Torres',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: List.generate(
+                                5,
+                                (i) => const Icon(
+                                  Icons.star_rounded,
+                                  size: 16,
+                                  color: Colors.yellow,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ========== MUNDO DE ISLAS ==========
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
+                        children: [
+                          CustomPaint(
+                            size: Size.infinite,
+                            painter: SeaWavesPainter(),
+                          ),
+                          CustomPaint(
+                            size: Size.infinite,
+                            painter: WorldPathPainter(
+                              _levels.map((e) => e.position).toList(),
+                            ),
+                          ),
+                          AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) {
+                              final offsetX =
+                                  sin(_controller.value * 2 * pi) * 10;
+                              return Stack(
+                                children: [
+                                  Positioned(
+                                    left: 40 + offsetX,
+                                    top: 40,
+                                    child: const CloudWidget(),
+                                  ),
+                                  Positioned(
+                                    right: 20 - offsetX,
+                                    top: 80,
+                                    child: const CloudWidget(small: true),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          for (int i = 0; i < _levels.length; i++)
+                            _buildAnimatedLevelNode(
+                              level: _levels[i],
+                              index: i,
+                              width: constraints.maxWidth,
+                              height: constraints.maxHeight,
+                              textTheme: textTheme,
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // ========== BARRA INFERIOR ==========
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFA726),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.pink.shade500,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.favorite_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'PROGRESO ',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          'CITAS: 3/6',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 18,
+                          color: Colors.yellow,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '5 NIV 1',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: 0.5,
+                        minHeight: 10,
+                        backgroundColor: Colors.white.withOpacity(0.3),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.purple.shade300,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '¡Sigue creando momentos increíbles!',
+                      style: textTheme.bodySmall?.copyWith(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedLevelNode({
+    required WorldLevel level,
+    required int index,
+    required double width,
+    required double height,
+    required TextTheme textTheme,
+  }) {
+    final phase = index * (pi / 2);
+
+    final dx = level.position.dx * width;
+    final dy = level.position.dy * height;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final bounceY = _bounce(phase);
+        return Positioned(left: dx - 40, top: dy + bounceY, child: child!);
+      },
+      child: IslandLevelNode(level: level, textTheme: textTheme, onTap: () {}),
+    );
+  }
+}
