@@ -2,7 +2,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class LocationService {
-  Future<bool> _checkPermission() async {
+  /// Verifica y solicita permisos
+  Future<bool> _ensurePermission() async {
     final status = await Permission.locationWhenInUse.status;
 
     if (status.isGranted) return true;
@@ -11,24 +12,33 @@ class LocationService {
     return result.isGranted;
   }
 
-  Future<Position> getCurrentPosition() async {
-    final hasPermission = await _checkPermission();
+  Future<Position?> getCurrentPositionSafe() async {
+    try {
+      final hasPermission = await _ensurePermission();
+      if (!hasPermission) {
+        print('📍 Permiso de ubicación denegado');
+        return null;
+      }
 
-    if (!hasPermission) {
-      throw Exception('Permiso de ubicación denegado');
+      final isLocationEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!isLocationEnabled) {
+        print('📍 GPS desactivado');
+        return null;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
+      );
+
+      print(
+        '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
+      );
+      return position;
+    } catch (e) {
+      print('📍 Error obteniendo ubicación: $e');
+      return null;
     }
-
-    final isLocationEnabled =
-        await Geolocator.isLocationServiceEnabled();
-
-    if (!isLocationEnabled) {
-      throw Exception('GPS desactivado');
-    }
-
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    print(position);
-    return position;
   }
 }

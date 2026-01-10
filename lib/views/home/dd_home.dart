@@ -34,12 +34,12 @@ class _DdHomeState extends State<DdHome> {
       appBar: AppBar(
         elevation: 0,
         title: Text(
-          "DATE ❤️ DOING",
+          "DATE ❤️ DO",
           style: txt.titleMedium?.copyWith(
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
             fontSize: 22,
-          ),  
+          ),
         ),
         centerTitle: false,
         actions: [

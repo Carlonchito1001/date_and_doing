@@ -162,7 +162,7 @@ class _DdLoginState extends State<DdLogin> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'DATE ❤️ DOING',
+          'DATE ❤️ DO',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -205,15 +205,7 @@ class _DdLoginState extends State<DdLogin> {
                           shape: BoxShape.circle,
                           color: Colors.white.withOpacity(0.2),
                         ),
-                        child: const CircleAvatar(
-                          radius: 40,
-                          backgroundColor: Colors.white,
-                          child: Icon(
-                            Icons.favorite_rounded,
-                            color: Color(0xFFE05875),
-                            size: 40,
-                          ),
-                        ),
+                        child: Image.asset('assets/datedo.png', scale: 5),
                       ),
                       const SizedBox(height: 16),
                       const Text(

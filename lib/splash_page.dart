@@ -1,4 +1,6 @@
+import 'package:date_and_doing/api/api_service.dart';
 import 'package:date_and_doing/service/fcm_service.dart';
+import 'package:date_and_doing/service/session_bootstrap_service.dart';
 import 'package:date_and_doing/service/shared_preferences_service.dart';
 import 'package:date_and_doing/views/home/dd_home.dart';
 import 'package:date_and_doing/views/login/dd_login.dart';
@@ -18,7 +20,7 @@ class _SplashPageState extends State<SplashPage>
   late final Animation<double> _scaleAnimation;
   late final Animation<double> _fadeAnimation;
 
-  final _prefs = SharedPreferencesService();
+  final SharedPreferencesService _prefs = SharedPreferencesService();
 
   @override
   void initState() {
@@ -29,47 +31,73 @@ class _SplashPageState extends State<SplashPage>
       duration: const Duration(milliseconds: 900),
     );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.7,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
 
     _controller.forward();
-    _decideNextRoute();
+    _bootstrap();
   }
 
-  Future<void> _decideNextRoute() async {
-    await Future.delayed(const Duration(seconds: 3));
+  Future<void> _bootstrap() async {
+    await Future.delayed(const Duration(seconds: 2));
 
-    final isLogged = await _prefs.isLogged();
+    final bool isLogged = await _prefs.isLogged();
     final currentUser = FirebaseAuth.instance.currentUser;
-
-    final goHome = isLogged && currentUser != null;
 
     if (!mounted) return;
 
-    if (goHome) {
-      try {
-        await FcmService.initFCM();
-      } catch (e) {
-        // no hacemos nada: no debe bloquear el arranque
-      }
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => DdHome()),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const DdLogin()),
-      );
+    if (!isLogged || currentUser == null) {
+      _goLogin();
+      return;
     }
+
+    // 1) Refresh tokens
+    try {
+      await ApiService().warmRefreshIfNeeded();
+
+      final access = await _prefs.getAccessToken();
+      if (access == null || access.isEmpty) {
+        await _prefs.clearSession();
+        _goLogin();
+        return;
+      }
+    } catch (_) {
+      await _prefs.clearSession();
+      _goLogin();
+      return;
+    }
+
+    // 2) FCM no bloquea
+    try {
+      await FcmService.initFCM();
+    } catch (_) {}
+
+    // 3) Bootstrap de ubicación/FCM si está en null (NO bloquea)
+    try {
+      await SessionBootstrapService().ensureDeviceData();
+    } catch (_) {}
+
+    if (!mounted) return;
+    _goHome();
+  }
+
+  void _goHome() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => DdHome()),
+    );
+  }
+
+  void _goLogin() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const DdLogin()),
+    );
   }
 
   @override
@@ -120,7 +148,7 @@ class _SplashPageState extends State<SplashPage>
                     ),
                     const SizedBox(height: 18),
                     const Text(
-                      'Date & Doing',
+                      'Date & Do',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,

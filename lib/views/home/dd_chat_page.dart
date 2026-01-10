@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:date_and_doing/views/history/history_levels.dart';
+import 'package:date_and_doing/views/home/discover/widgets/dd_create_activity_page.dart';
 import 'package:date_and_doing/widgets/modal_day_chat.dart';
 import 'package:date_and_doing/widgets/modal_alini_unlocked.dart';
 import 'package:flutter/material.dart';
@@ -902,6 +903,15 @@ class _DdChatPageState extends State<DdChatPage> {
             tooltip: "Asistente IA del chat",
             icon: const Icon(Icons.smart_toy_outlined),
             onPressed: _analyzing ? null : _openAssistantOptions,
+          ),
+          IconButton(
+            icon: const Icon(Icons.date_range),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => DdCreateActivityPage()),
+              );
+            },
           ),
         ],
       ),

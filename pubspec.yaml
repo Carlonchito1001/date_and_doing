@@ -73,6 +73,7 @@ flutter:
   assets:
     - assets/date.png
     - assets/date_copy.png
+    - assets/datedo.png
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -103,14 +104,9 @@ flutter:
 
 flutter_native_splash:
   color: "#0F172A"
-  image: assets/date.png
+  image: assets/ic_launcher.png
 
   color_dark: "#020617"
-  image_dark: assets/date_copy.png
+  image_dark: assets/ic_launcher.png
 
   android: true
-
-  android_12:
-    image: assets/date.png  
-    icon_background_color: "#020617"
-    icon_background_color_dark: "#020617"

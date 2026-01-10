@@ -1,3 +1,6 @@
+// lib/views/profile_user/edit_profile_page.dart
+import 'package:date_and_doing/api/api_service.dart';
+import 'package:date_and_doing/service/shared_preferences_service.dart';
 import 'package:flutter/material.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -10,19 +13,27 @@ class EditProfilePage extends StatefulWidget {
 class _EditProfilePageState extends State<EditProfilePage> {
   String? _selectedCountry;
   String? _selectedCity;
-  final TextEditingController _occupationController = TextEditingController(
-    text: "Diseñador Gráfico",
-  );
-  final TextEditingController _aboutController = TextEditingController(
-    text:
-        "Me apasiona el arte urbano, el diseño creativo y conocer personas con intereses similares.",
-  );
+
+  final TextEditingController _occupationController = TextEditingController();
+  final TextEditingController _aboutController = TextEditingController();
+
+  String _fullName = '';
+  String _ageText = '';
+  String? _avatarUrl;
+
+  bool _loading = true;
+  bool _saving = false;
 
   static const int _maxAboutChars = 300;
 
-  // Ejemplo de datos (puedes conectarlo luego a tu backend)
   final List<String> _countries = ["Perú", "México", "Argentina", "Chile"];
   final List<String> _cities = ["Iquitos", "Lima", "Cusco", "Arequipa"];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
 
   @override
   void dispose() {
@@ -31,11 +42,145 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
+  Future<void> _loadUserData() async {
+    final sp = SharedPreferencesService();
+    final userInfo = await sp.getUserInfo();
+
+    if (!mounted) return;
+
+    if (userInfo != null) {
+      final fullname = (userInfo['use_txt_fullname'] ?? '').toString();
+      final age = userInfo['use_txt_age'];
+      final country = userInfo['use_txt_country'];
+      final city = userInfo['use_txt_city'];
+      final occupation = userInfo['use_txt_occupation'];
+      final desc = userInfo['use_txt_description'];
+      final avatar = userInfo['use_txt_avatar'];
+
+      setState(() {
+        _fullName = fullname.isEmpty ? 'Usuario' : fullname;
+        _ageText = (age == null || age.toString().trim().isEmpty)
+            ? '—'
+            : age.toString();
+
+        _selectedCountry =
+            (country == null || country.toString().trim().isEmpty)
+            ? null
+            : country.toString();
+        _selectedCity = (city == null || city.toString().trim().isEmpty)
+            ? null
+            : city.toString();
+
+        _occupationController.text = (occupation ?? '').toString();
+        _aboutController.text = (desc ?? '').toString();
+
+        _avatarUrl = (avatar == null || avatar.toString().trim().isEmpty)
+            ? null
+            : avatar.toString();
+
+        _loading = false;
+      });
+    } else {
+      setState(() => _loading = false);
+    }
+  }
+
+  Map<String, dynamic> _buildPayload() {
+    final Map<String, dynamic> payload = {};
+
+    void putIfValid(String key, dynamic value) {
+      if (value == null) return;
+      if (value is String) {
+        final v = value.trim();
+        if (v.isEmpty) return;
+        payload[key] = v;
+        return;
+      }
+      payload[key] = value;
+    }
+
+    putIfValid('use_txt_country', _selectedCountry);
+    putIfValid('use_txt_city', _selectedCity);
+    putIfValid('use_txt_occupation', _occupationController.text);
+    putIfValid('use_txt_description', _aboutController.text);
+
+    return payload;
+  }
+
+  Future<void> _saveProfile() async {
+    final sp = SharedPreferencesService();
+
+    final accessToken = await sp.getAccessToken();
+    final userInfo = await sp.getUserInfo();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      _toast('No hay access token. Vuelve a iniciar sesión.');
+      return;
+    }
+    if (userInfo == null) {
+      _toast('No hay userInfo guardado.');
+      return;
+    }
+
+    final idRaw = userInfo['use_int_id'];
+    if (idRaw == null) {
+      _toast('userInfo no trae use_int_id.');
+      return;
+    }
+    final int userId = (idRaw as num).toInt();
+
+    final payload = _buildPayload();
+    if (payload.isEmpty) {
+      _toast('No hay cambios para guardar.');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await ApiService().editarPerfil(
+        accessToken: accessToken,
+        perfilData: payload,
+        id: userId,
+      );
+
+      final refreshed = await ApiService().infoUser(accessToken: accessToken);
+      await sp.saveUserInfo(refreshed);
+
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+      });
+
+      _toast('Perfil actualizado ✅');
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _toast('Error: $e');
+    }
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final textTheme = theme.textTheme;
+
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("Editar perfil"),
+          backgroundColor: cs.surface,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     final aboutLength = _aboutController.text.length;
 
@@ -52,7 +197,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar
               Center(
                 child: Column(
                   children: [
@@ -67,18 +211,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       child: CircleAvatar(
                         radius: 48,
                         backgroundColor: cs.surface,
-                        child: Icon(
-                          Icons.person,
-                          size: 48,
-                          color: cs.onSurface.withOpacity(0.7),
-                        ),
+                        backgroundImage: _avatarUrl != null
+                            ? NetworkImage(_avatarUrl!)
+                            : null,
+                        child: _avatarUrl == null
+                            ? Icon(
+                                Icons.person,
+                                size: 48,
+                                color: cs.onSurface.withOpacity(0.7),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextButton.icon(
-                      onPressed: () {
-                        // TODO: abrir bottom sheet para cambiar foto
-                      },
+                      onPressed: () {},
                       icon: Icon(Icons.camera_alt_outlined, color: cs.primary),
                       label: Text(
                         "Cambiar foto",
@@ -91,10 +238,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Nombre (no editable)
               _buildLabelWithHint(
                 context,
                 label: "Nombre Completo",
@@ -104,11 +248,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
               _buildReadOnlyField(
                 context,
                 icon: Icons.person_outline,
-                value: "Juan Pérez",
+                value: _fullName,
               ),
               const SizedBox(height: 16),
-
-              // Edad (no editable)
               _buildLabelWithHint(
                 context,
                 label: "Edad",
@@ -118,14 +260,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
               _buildReadOnlyField(
                 context,
                 icon: Icons.cake_outlined,
-                value: "28 años",
+                value: _ageText == '—' ? '—' : '$_ageText años',
               ),
-
               const SizedBox(height: 24),
               Divider(color: cs.outlineVariant),
               const SizedBox(height: 12),
-
-              // Título "Información editable"
               Row(
                 children: [
                   Icon(Icons.edit_outlined, size: 18, color: cs.primary),
@@ -139,10 +278,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
-              // País
               Text(
                 "País",
                 style: textTheme.bodyMedium?.copyWith(
@@ -156,16 +292,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 value: _selectedCountry,
                 hint: "Selecciona un país",
                 items: _countries,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCountry = value;
-                  });
-                },
+                onChanged: (value) => setState(() => _selectedCountry = value),
               ),
-
               const SizedBox(height: 16),
-
-              // Ciudad
               Text(
                 "Ciudad",
                 style: textTheme.bodyMedium?.copyWith(
@@ -179,16 +308,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 value: _selectedCity,
                 hint: "Selecciona una ciudad",
                 items: _cities,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCity = value;
-                  });
-                },
+                onChanged: (value) => setState(() => _selectedCity = value),
               ),
-
               const SizedBox(height: 16),
-
-              // Ocupación
               Text(
                 "Ocupación",
                 style: textTheme.bodyMedium?.copyWith(
@@ -204,10 +326,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   hintText: "Tu ocupación",
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // Algo sobre mí
               Text(
                 "Algo sobre mí",
                 style: textTheme.bodyMedium?.copyWith(
@@ -245,22 +364,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Card Datos protegidos
               _buildSecurityCard(context),
-
               const SizedBox(height: 24),
-
-              // Botón Guardar cambios
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () {
-                    // TODO: enviar datos al backend
-                  },
-                  child: const Text("Guardar cambios"),
+                  onPressed: _saving ? null : _saveProfile,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Guardar cambios"),
                 ),
               ),
             ],
@@ -269,8 +386,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ),
     );
   }
-
-  // ---------- Widgets auxiliares ----------
 
   Widget _buildLabelWithHint(
     BuildContext context, {

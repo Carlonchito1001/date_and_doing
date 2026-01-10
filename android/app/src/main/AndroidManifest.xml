@@ -7,7 +7,7 @@
 
 
     <application
-        android:label="Date❤️Doing"
+        android:label="Date❤️Do"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

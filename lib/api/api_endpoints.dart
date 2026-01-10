@@ -10,6 +10,8 @@ class ApiEndpoints {
   static String sugerenciasMatch =
       '$baseUrl/dateanddo/discover/?radius_km=10&limit=30';
   static String swipes = '$baseUrl/dateanddo/swipes/';
-  static String refreshToken = '$baseUrl/auth/refresh/';
+  static String refreshToken = '$baseUrl/auth/token/refresh/';
   static String allMatches = '$baseUrl/dateanddo/matches/';
+  static String allChats = '$baseUrl/dateanddo/messages/';
+  static String editarPerfil = '$baseUrl/auth/users/';
 }

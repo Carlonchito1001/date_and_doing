@@ -23,6 +23,7 @@ class SharedPreferencesService {
     String? photoUrl,
     String? firebaseIdToken,
     required String accessToken,
+    String? refreshToken,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyIsLogged, true);
@@ -31,12 +32,13 @@ class SharedPreferencesService {
     if (email != null) await prefs.setString(keyEmail, email);
     if (phone != null) await prefs.setString(keyPhone, phone);
     if (photoUrl != null) await prefs.setString(keyPhoto, photoUrl);
-    if (firebaseIdToken != null) {
-      await prefs.setString(firetoken, firebaseIdToken);
-    }
+    if (firebaseIdToken != null) await prefs.setString(firetoken, firebaseIdToken);
 
-    // ✅ antes lo recibías pero no lo guardabas
     await prefs.setString(keyAccessToken, accessToken);
+
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await prefs.setString(keyRefreshToken, refreshToken);
+    }
   }
 
   Future<void> saveAccessToken(String accessToken) async {
@@ -59,6 +61,16 @@ class SharedPreferencesService {
     return prefs.getString(keyRefreshToken);
   }
 
+  Future<bool> hasRefreshToken() async {
+    final r = await getRefreshToken();
+    return r != null && r.isNotEmpty;
+  }
+
+  Future<bool> hasAccessToken() async {
+    final a = await getAccessToken();
+    return a != null && a.isNotEmpty;
+  }
+
   Future<void> saveUserInfo(Map<String, dynamic> userInfo) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyUserInfo, jsonEncode(userInfo));
@@ -67,10 +79,8 @@ class SharedPreferencesService {
   Future<Map<String, dynamic>?> getUserInfo() async {
     final prefs = await SharedPreferences.getInstance();
     final userInfoString = prefs.getString(keyUserInfo);
-    if (userInfoString != null) {
-      return jsonDecode(userInfoString) as Map<String, dynamic>;
-    }
-    return null;
+    if (userInfoString == null) return null;
+    return jsonDecode(userInfoString) as Map<String, dynamic>;
   }
 
   Future<bool> isLogged() async {
