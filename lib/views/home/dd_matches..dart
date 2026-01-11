@@ -1,7 +1,6 @@
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:flutter/material.dart';
 import 'package:date_and_doing/api/api_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
-
 import 'dd_chat_page.dart';
 
 class DdMatches extends StatefulWidget {
@@ -54,38 +53,51 @@ class _DdMatchesState extends State<DdMatches> {
     }
   }
 
-  // ============== MAPEOS (tolerantes) ==============
+  Map<String, dynamic>? _otherUserFrom(Map<String, dynamic> m) {
+    final v = m['other_user'];
+    return (v is Map<String, dynamic>) ? v : null;
+  }
+
+  int _matchIdFrom(Map<String, dynamic> m) {
+    final v = m['ddm_int_id'] ?? m['id'] ?? m['match_id'];
+    if (v == null) throw Exception("No encuentro ddm_int_id en match");
+    return v is int ? v : int.parse(v.toString());
+  }
+
+  int _otherUserIdFrom(Map<String, dynamic> m) {
+    final ou = _otherUserFrom(m);
+    final v = ou?['use_int_id'];
+    if (v == null) return 0;
+    return v is int ? v : int.parse(v.toString());
+  }
 
   String _nameFrom(Map<String, dynamic> m) {
-    // soporta: nombre, use_txt_fullname, user.fullname, match_user.fullname, etc.
-    final v = m['nombre'] ??
+    final ou = _otherUserFrom(m);
+    final v =
+        ou?['fullname'] ??
+        m['nombre'] ??
         m['use_txt_fullname'] ??
         m['full_name'] ??
-        m['fullname'] ??
-        (m['user'] is Map ? (m['user']['use_txt_fullname'] ?? m['user']['fullname']) : null) ??
-        (m['match_user'] is Map ? (m['match_user']['use_txt_fullname'] ?? m['match_user']['fullname']) : null);
+        m['fullname'];
     return (v ?? 'Usuario').toString();
   }
 
   int _ageFrom(Map<String, dynamic> m) {
-    final v = m['edad'] ??
-        m['age'] ??
-        m['use_txt_age'] ??
-        (m['user'] is Map ? m['user']['use_txt_age'] : null) ??
-        (m['match_user'] is Map ? m['match_user']['use_txt_age'] : null);
-
+    final ou = _otherUserFrom(m);
+    final v = ou?['age'] ?? m['edad'] ?? m['age'];
     if (v == null) return 0;
     if (v is int) return v;
     return int.tryParse(v.toString()) ?? 0;
   }
 
   String _photoFrom(Map<String, dynamic> m) {
-    final v = m['foto'] ??
+    final ou = _otherUserFrom(m);
+    final v =
+        ou?['photo'] ??
+        m['foto'] ??
         m['photo'] ??
         m['avatar'] ??
-        m['use_txt_avatar'] ??
-        (m['user'] is Map ? (m['user']['use_txt_avatar'] ?? m['user']['avatar']) : null) ??
-        (m['match_user'] is Map ? (m['match_user']['use_txt_avatar'] ?? m['match_user']['avatar']) : null);
+        m['use_txt_avatar'];
 
     final s = (v ?? '').toString();
     return s.isNotEmpty
@@ -94,45 +106,46 @@ class _DdMatchesState extends State<DdMatches> {
   }
 
   String _statusKeyFrom(Map<String, dynamic> m) {
-    final v = m['status'] ?? m['match_status'] ?? m['estado'] ?? m['online_status'];
-    final s = (v ?? 'desconectado').toString().toLowerCase();
-    return s;
+    final ou = _otherUserFrom(m);
+    final v = ou?['online_status'] ?? m['status'] ?? m['online_status'];
+    return (v ?? 'unknown').toString().toLowerCase();
   }
 
   Color _statusColor(String status) {
-    switch (status) {
-      case "nuevo":
-        return Colors.pinkAccent;
-      case "online":
-        return Colors.green;
-      case "activo":
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
+    if (status.contains("online")) return Colors.green;
+    if (status.contains("unknown")) return Colors.grey;
+    if (status.contains("offline")) return Colors.grey;
+    return Colors.grey;
   }
 
   String _statusText(String status) {
-    switch (status) {
-      case "nuevo":
-        return "Nuevo Match 💖";
-      case "online":
-        return "En línea";
-      case "activo":
-        return "Activo";
-      default:
-        return "Desconectado";
-    }
+    if (status.contains("online")) return "En línea";
+    if (status.contains("unknown")) return "Desconectado";
+    if (status.contains("offline")) return "Desconectado";
+    return "Desconectado";
+  }
+
+  bool _isNewMatch(Map<String, dynamic> m) {
+    final v = m['is_new_match'];
+    return v == true || v?.toString() == "true";
+  }
+
+  String _newMatchLabel(Map<String, dynamic> m) {
+    return (m['new_match_label'] ?? 'Nuevo match').toString();
   }
 
   void _openChatFromMatch(Map<String, dynamic> match) {
     final nombre = _nameFrom(match);
     final foto = _photoFrom(match);
+    final matchId = _matchIdFrom(match);
+    final otherUserId = _otherUserIdFrom(match);
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => DdChatPage(
+          matchId: matchId,
+          otherUserId: otherUserId,
           nombre: nombre,
           foto: foto,
         ),
@@ -169,7 +182,6 @@ class _DdMatchesState extends State<DdMatches> {
                 style: TextStyle(fontSize: 13, color: Colors.grey),
               ),
               const SizedBox(height: 16),
-
               if (_loading)
                 const Expanded(
                   child: Center(child: CircularProgressIndicator()),
@@ -196,34 +208,38 @@ class _DdMatchesState extends State<DdMatches> {
                 )
               else if (matches.isEmpty)
                 const Expanded(
-                  child: Center(
-                    child: Text('Aún no tienes matches 🙌'),
-                  ),
+                  child: Center(child: Text('Aún no tienes matches 🙌')),
                 )
               else
                 Expanded(
                   child: GridView.builder(
                     itemCount: matches.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 0.72,
-                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.72,
+                        ),
                     itemBuilder: (context, index) {
                       final item = matches[index];
-
                       final nombre = _nameFrom(item);
                       final edad = _ageFrom(item);
                       final foto = _photoFrom(item);
                       final status = _statusKeyFrom(item);
+                      final isNew = _isNewMatch(item);
+                      final newLabel = _newMatchLabel(item);
 
                       return _MatchCard(
                         nombre: nombre,
                         edad: edad,
                         foto: foto,
-                        statusText: _statusText(status),
-                        statusColor: _statusColor(status),
+                        statusText: isNew
+                            ? "$newLabel 💖"
+                            : _statusText(status),
+                        statusColor: isNew
+                            ? Colors.pinkAccent
+                            : _statusColor(status),
                         onTap: () => _openChatFromMatch(item),
                       );
                     },
@@ -273,10 +289,7 @@ class _MatchCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.7),
-                      Colors.transparent,
-                    ],
+                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
                   ),
                 ),
               ),

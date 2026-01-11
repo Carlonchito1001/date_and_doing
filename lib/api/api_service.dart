@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:date_and_doing/models/dd_date.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:date_and_doing/api/api_endpoints.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 
 class ApiService {
   final SharedPreferencesService _prefs = SharedPreferencesService();
@@ -397,6 +398,171 @@ class ApiService {
 
     throw Exception(
       'Failed to edit profile: ${response.statusCode} - ${response.body}',
+    );
+  }
+
+  //==================== citas =============================//
+
+  Future<Map<String, dynamic>> createDate({
+    required int matchId,
+    required String title,
+    required String description,
+    required DateTime scheduledLocal, // hora local del usuario (Perú -05)
+  }) async {
+    // Formato tipo: 2026-01-15T18:30:00-05:00
+    // Construimos ISO con offset local.
+    final offset = scheduledLocal.timeZoneOffset;
+    final sign = offset.isNegative ? "-" : "+";
+    final hh = offset.inHours.abs().toString().padLeft(2, "0");
+    final mm = (offset.inMinutes.abs() % 60).toString().padLeft(2, "0");
+    final isoWithOffset =
+        "${scheduledLocal.toIso8601String().substring(0, 19)}$sign$hh:$mm";
+
+    final payload = {
+      "ddm_int_id": matchId,
+      "ddd_txt_title": title,
+      "ddd_txt_description": description,
+      "ddd_timestamp_date": isoWithOffset,
+    };
+
+    final response = await _requestWithRefresh((token) {
+      return http.post(
+        Uri.parse(ApiEndpoints.dates),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode(payload),
+      );
+    });
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      "Failed to create date: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> allDates() async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.dates), // /api/dateanddo/dates/
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Service-Code': 'dateanddo',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+
+    throw Exception(
+      'Failed to get dates: ${response.statusCode} - ${response.body}',
+    );
+  }
+
+  // ================================================================//
+
+  Future<List<DdDate>> getDatesForMatch(int matchId) async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.dates),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Service-Code': 'dateanddo',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      final List<dynamic> raw = jsonDecode(response.body);
+      final list = raw.cast<Map<String, dynamic>>();
+
+      final filtered = list.where((d) => d["ddm_int_id"] == matchId).toList();
+
+      return filtered.map((j) => DdDate.fromJson(j)).toList();
+    }
+
+    throw Exception(
+      'Failed to get dates: ${response.statusCode} - ${response.body}',
+    );
+  }
+
+  Future<Map<String, dynamic>> patchDate({
+    required int dateId,
+    required Map<String, dynamic> data,
+  }) async {
+    final response = await _requestWithRefresh((token) {
+      return http.patch(
+        Uri.parse(ApiEndpoints.dateById(dateId)),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode(data),
+      );
+    });
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      "Failed to patch date: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  Future<void> confirmDate(int dateId) async {
+    await patchDate(dateId: dateId, data: {"ddd_txt_status": "CONFIRMADA"});
+  }
+
+  Future<void> rejectDate(int dateId) async {
+    await patchDate(dateId: dateId, data: {"ddd_txt_status": "RECHAZADA"});
+  }
+
+  Future<Map<String, dynamic>> sendMessage({
+    required int matchId,
+    required int receiverId,
+    required String body,
+  }) async {
+    final payload = {
+      "ddm_int_id": matchId,
+      "use_int_receiver": receiverId,
+      "ddmsg_txt_body": body,
+    };
+
+    final response = await _requestWithRefresh((token) {
+      return http.post(
+        Uri.parse(ApiEndpoints.messages),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode(payload),
+      );
+    });
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      "Failed to send message: ${response.statusCode} - ${response.body}",
     );
   }
 }

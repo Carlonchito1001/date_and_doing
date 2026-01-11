@@ -1,5 +1,5 @@
 import 'dart:math';
-import '../model/dd_user.dart';
+import '../models/dd_user.dart';
 
 class GoogleAuthMock {
   /// Simula un login con Google.

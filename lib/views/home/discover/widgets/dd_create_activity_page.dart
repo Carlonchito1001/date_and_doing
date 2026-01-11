@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:date_and_doing/api/api_service.dart';
 
 class DdCreateActivityPage extends StatefulWidget {
-  const DdCreateActivityPage({super.key});
+  final int matchId;
+  final String partnerName;
+
+  const DdCreateActivityPage({
+    super.key,
+    required this.matchId,
+    required this.partnerName,
+  });
 
   @override
   State<DdCreateActivityPage> createState() => _DdCreateActivityPageState();
 }
 
 class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
-  // Simulación: con quién estás creando la cita
-  final String partnerName = "Ana García";
+  final _api = ApiService();
 
-  // Estado UI
   bool _isSaving = false;
   String _selectedId = "playa";
 
-  // Fecha (manual)
   final _dayCtrl = TextEditingController();
   final _monthCtrl = TextEditingController();
   final _yearCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+
+  TimeOfDay? _selectedTime;
 
   final List<_ActivityItem> _activities = const [
     _ActivityItem(id: "playa", emoji: "🏖️", label: "Día de Playa"),
@@ -38,10 +46,9 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
     _dayCtrl.dispose();
     _monthCtrl.dispose();
     _yearCtrl.dispose();
+    _descCtrl.dispose();
     super.dispose();
   }
-
-  // ===== Helpers =====
 
   _ActivityItem get _selectedActivity =>
       _activities.firstWhere((a) => a.id == _selectedId);
@@ -56,7 +63,6 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
 
     try {
       final dt = DateTime(yyyy, mm, dd);
-      // DateTime corrige automáticamente fechas inválidas (ej: 32/01) => hay que validar
       if (dt.year != yyyy || dt.month != mm || dt.day != dd) return null;
       return dt;
     } catch (_) {
@@ -64,8 +70,17 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
     }
   }
 
+  DateTime? _buildScheduledLocal() {
+    final date = _tryParseDate();
+    if (date == null) return null;
+    final t = _selectedTime ?? const TimeOfDay(hour: 18, minute: 30);
+    return DateTime(date.year, date.month, date.day, t.hour, t.minute);
+  }
+
   Future<void> _openCalendar() async {
     final now = DateTime.now();
+    final cs = Theme.of(context).colorScheme;
+
     final picked = await showDatePicker(
       context: context,
       initialDate: now,
@@ -73,11 +88,9 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
       lastDate: DateTime(now.year + 2),
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(
-              context,
-            ).colorScheme.copyWith(primary: const Color(0xFFB53CF5)),
-          ),
+          data: Theme.of(
+            context,
+          ).copyWith(colorScheme: cs.copyWith(primary: cs.primary)),
           child: child!,
         );
       },
@@ -91,67 +104,121 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
     }
   }
 
-  // ===== Simulación de "crear cita" =====
+  Future<void> _openTimePicker() async {
+    final cs = Theme.of(context).colorScheme;
 
-  Future<void> _createDateSimulated() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? const TimeOfDay(hour: 18, minute: 30),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(
+            context,
+          ).copyWith(colorScheme: cs.copyWith(primary: cs.primary)),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) setState(() => _selectedTime = picked);
+  }
+
+  Future<void> _createDateReal() async {
     if (_isSaving) return;
 
-    final dt = _tryParseDate();
-    if (dt == null) {
-      _toast(
-        "Ingresa una fecha válida (DD/MM/AAAA) o selecciona desde el calendario.",
-      );
+    final scheduled = _buildScheduledLocal();
+    if (scheduled == null) {
+      _toast("Ingresa una fecha válida y selecciona una hora.");
+      return;
+    }
+    if (!scheduled.isAfter(DateTime.now())) {
+      _toast("La cita debe ser en una fecha/hora futura.");
       return;
     }
 
+    final title = _selectedActivity.label;
+    final description = _descCtrl.text.trim().isEmpty
+        ? "Sin descripción"
+        : _descCtrl.text.trim();
+
     setState(() => _isSaving = true);
 
-    // Simula request al backend
-    await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      final res = await _api.createDate(
+        matchId: widget.matchId,
+        title: title,
+        description: description,
+        scheduledLocal: scheduled,
+      );
 
-    if (!mounted) return;
-    setState(() => _isSaving = false);
+      if (!mounted) return;
+      setState(() => _isSaving = false);
 
-    final created = _DateCreated(
-      id: "DD-${DateTime.now().millisecondsSinceEpoch}",
-      partnerName: partnerName,
-      activityLabel: _selectedActivity.label,
-      activityId: _selectedActivity.id,
-      date: dt,
-      createdAt: DateTime.now(),
-    );
+      final createdId = (res["id"] ?? res["ddd_int_id"] ?? "OK").toString();
 
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _SuccessDialog(created: created),
-    );
+      final created = _DateCreated(
+        id: createdId,
+        partnerName: widget.partnerName,
+        activityLabel: title,
+        activityId: _selectedActivity.id,
+        date: scheduled,
+        createdAt: DateTime.now(),
+      );
+
+      await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _SuccessDialog(created: created),
+      );
+
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      _toast("❌ Error creando cita: $e");
+    }
   }
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ===== UI =====
+  String _prettyDateTimeOrEmpty(BuildContext context) {
+    final scheduled = _buildScheduledLocal();
+    if (scheduled == null) return "—";
+    final dd = scheduled.day.toString().padLeft(2, "0");
+    final mm = scheduled.month.toString().padLeft(2, "0");
+    final yyyy = scheduled.year.toString();
+    final t = _selectedTime?.format(context) ?? "18:30";
+    return "$dd/$mm/$yyyy • $t";
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final top = MediaQuery.of(context).padding.top;
 
+    final headerGradient = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        cs.primary,
+        cs.secondaryContainer != cs.primary
+            ? cs.secondaryContainer
+            : cs.secondary,
+      ],
+    );
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       body: Column(
         children: [
-          // Top bar (degradado)
+          // Top bar (theme gradient)
           Container(
             padding: EdgeInsets.only(top: top),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Color(0xFFFF4FB8), Color(0xFFB53CF5)],
-              ),
-            ),
+            decoration: BoxDecoration(gradient: headerGradient),
             child: SizedBox(
               height: 68,
               child: Row(
@@ -159,6 +226,8 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                   const SizedBox(width: 8),
                   _TopIconButton(
                     icon: Icons.close,
+                    bg: cs.onPrimary.withOpacity(0.18),
+                    fg: cs.onPrimary,
                     onTap: () => Navigator.of(context).maybePop(),
                   ),
                   const SizedBox(width: 10),
@@ -167,22 +236,20 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           "Crear Actividad",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                          style: textTheme.titleSmall?.copyWith(
+                            color: cs.onPrimary,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          "Planea una cita con $partnerName",
+                          "Planea una cita con ${widget.partnerName}",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onPrimary.withOpacity(0.80),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -191,24 +258,26 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                   ),
                   _TopIconButton(
                     icon: Icons.phone,
-                    onTap: () {
-                      _toast("📞 Llamando (simulado) a $partnerName...");
-                    },
+                    bg: cs.onPrimary.withOpacity(0.18),
+                    fg: cs.onPrimary,
+                    onTap: () => _toast(
+                      "📞 Llamando (simulado) a ${widget.partnerName}...",
+                    ),
                   ),
+
                   const SizedBox(width: 10),
                 ],
               ),
             ),
           ),
 
-          // Body
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _RequiredLabel(text: "Tipo de Actividad"),
+                  _RequiredLabel(text: "Tipo de Actividad", cs: cs),
                   const SizedBox(height: 10),
 
                   GridView.builder(
@@ -225,18 +294,18 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                     itemBuilder: (context, i) {
                       final item = _activities[i];
                       final selected = item.id == _selectedId;
-
                       return _ActivityCard(
                         emoji: item.emoji,
                         label: item.label,
                         selected: selected,
+                        cs: cs,
                         onTap: () => setState(() => _selectedId = item.id),
                       );
                     },
                   ),
 
                   const SizedBox(height: 18),
-                  _RequiredLabel(text: "Fecha"),
+                  _RequiredLabel(text: "Fecha", cs: cs),
                   const SizedBox(height: 10),
 
                   Row(
@@ -248,130 +317,145 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                           width: 54,
                           height: 54,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFB53CF5),
+                            color: cs.primary,
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.calendar_month,
-                            color: Colors.white,
+                            color: cs.onPrimary,
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
-
                       Expanded(
                         child: _DateField(
                           controller: _dayCtrl,
                           hint: "DD",
                           label: "Día",
                           maxLen: 2,
+                          cs: cs,
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Text(
+                      Text(
                         "/",
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.black45,
+                        style: textTheme.titleMedium?.copyWith(
+                          color: cs.onSurface.withOpacity(0.45),
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(width: 10),
-
                       Expanded(
                         child: _DateField(
                           controller: _monthCtrl,
                           hint: "MM",
                           label: "Mes",
                           maxLen: 2,
+                          cs: cs,
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Text(
+                      Text(
                         "/",
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.black45,
+                        style: textTheme.titleMedium?.copyWith(
+                          color: cs.onSurface.withOpacity(0.45),
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(width: 10),
-
                       Expanded(
                         child: _DateField(
                           controller: _yearCtrl,
                           hint: "AAAA",
                           label: "Año",
                           maxLen: 4,
+                          cs: cs,
                         ),
                       ),
                     ],
                   ),
 
                   const SizedBox(height: 10),
-
-                  InkWell(
+                  _SoftTile(
+                    cs: cs,
+                    icon: Icons.event,
+                    text: "O selecciona desde el calendario",
                     onTap: _openCalendar,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F7FB),
+                  ),
+
+                  const SizedBox(height: 16),
+                  _RequiredLabel(text: "Hora", cs: cs),
+                  const SizedBox(height: 10),
+                  _SoftTile(
+                    cs: cs,
+                    icon: Icons.access_time,
+                    text: _selectedTime == null
+                        ? "Selecciona una hora (por defecto 18:30)"
+                        : "Hora: ${_selectedTime!.format(context)}",
+                    onTap: _openTimePicker,
+                  ),
+
+                  const SizedBox(height: 18),
+                  _RequiredLabel(text: "Lugar / Nota", cs: cs),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _descCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: "Ej: Plaza principal, Cafetería X, etc.",
+                      filled: true,
+                      fillColor: cs.surfaceVariant.withOpacity(0.6),
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE6E6F0)),
+                        borderSide: BorderSide(
+                          color: cs.outline.withOpacity(0.35),
+                        ),
                       ),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.event, size: 18, color: Colors.black54),
-                          SizedBox(width: 10),
-                          Text(
-                            "O selecciona desde el calendario",
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: cs.outline.withOpacity(0.35),
+                        ),
                       ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: cs.primary),
+                      ),
+                    ),
+                    style: textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
 
                   const SizedBox(height: 18),
-
-                  // Resumen simulado (como preview)
                   _PreviewCard(
-                    partnerName: partnerName,
+                    cs: cs,
+                    partnerName: widget.partnerName,
                     activity: _selectedActivity.label,
-                    dateText: _prettyDateOrEmpty(),
+                    dateText: _prettyDateTimeOrEmpty(context),
                   ),
 
                   const SizedBox(height: 14),
-
-                  // Botón crear cita (simulado)
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isSaving ? null : _createDateSimulated,
+                      onPressed: _isSaving ? null : _createDateReal,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF4FB8),
-                        foregroundColor: Colors.white,
+                        backgroundColor: cs.primary,
+                        foregroundColor: cs.onPrimary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                         elevation: 0,
                       ),
                       child: _isSaving
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                color: Colors.white,
+                                color: cs.onPrimary,
                               ),
                             )
                           : const Text(
@@ -391,30 +475,22 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
       ),
     );
   }
-
-  String _prettyDateOrEmpty() {
-    final dt = _tryParseDate();
-    if (dt == null) return "—";
-    final dd = dt.day.toString().padLeft(2, "0");
-    final mm = dt.month.toString().padLeft(2, "0");
-    final yyyy = dt.year.toString();
-    return "$dd/$mm/$yyyy";
-  }
 }
 
 // ================= UI Components =================
 
 class _RequiredLabel extends StatelessWidget {
   final String text;
-  const _RequiredLabel({required this.text});
+  final ColorScheme cs;
+  const _RequiredLabel({required this.text, required this.cs});
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return RichText(
       text: TextSpan(
-        style: const TextStyle(
-          fontSize: 14,
-          color: Colors.black87,
+        style: textTheme.bodyMedium?.copyWith(
+          color: cs.onSurface,
           fontWeight: FontWeight.w800,
         ),
         children: [
@@ -433,19 +509,21 @@ class _ActivityCard extends StatelessWidget {
   final String emoji;
   final String label;
   final bool selected;
+  final ColorScheme cs;
   final VoidCallback onTap;
 
   const _ActivityCard({
     required this.emoji,
     required this.label,
     required this.selected,
+    required this.cs,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final border = selected ? const Color(0xFFFF4FB8) : const Color(0xFFE8E8F2);
-    final bg = selected ? const Color(0xFFFFEFF8) : Colors.white;
+    final border = selected ? cs.primary : cs.outline.withOpacity(0.25);
+    final bg = selected ? cs.primary.withOpacity(0.10) : cs.surface;
 
     return InkWell(
       onTap: onTap,
@@ -472,9 +550,11 @@ class _ActivityCard extends StatelessWidget {
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
                 fontSize: 12.5,
-                color: Colors.black87,
+                color: cs.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -485,22 +565,24 @@ class _ActivityCard extends StatelessWidget {
   }
 }
 
-/// ✅ Este _DateField está hecho para NO overflow (sin Column interno)
 class _DateField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final String label;
   final int maxLen;
+  final ColorScheme cs;
 
   const _DateField({
     required this.controller,
     required this.hint,
     required this.label,
     required this.maxLen,
+    required this.cs,
   });
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return SizedBox(
       height: 54,
       child: TextField(
@@ -517,20 +599,22 @@ class _DateField extends StatelessWidget {
             horizontal: 12,
             vertical: 12,
           ),
+          filled: true,
+          fillColor: cs.surfaceVariant.withOpacity(0.6),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE6E6F0)),
+            borderSide: BorderSide(color: cs.outline.withOpacity(0.35)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE6E6F0)),
+            borderSide: BorderSide(color: cs.outline.withOpacity(0.35)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFB53CF5)),
+            borderSide: BorderSide(color: cs.primary),
           ),
         ),
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -539,8 +623,15 @@ class _DateField extends StatelessWidget {
 class _TopIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+  final Color bg;
+  final Color fg;
 
-  const _TopIconButton({required this.icon, required this.onTap});
+  const _TopIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.bg,
+    required this.fg,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -551,21 +642,70 @@ class _TopIconButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
+          color: bg,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(icon, color: Colors.white),
+        child: Icon(icon, color: fg),
+      ),
+    );
+  }
+}
+
+class _SoftTile extends StatelessWidget {
+  final ColorScheme cs;
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+
+  const _SoftTile({
+    required this.cs,
+    required this.icon,
+    required this.text,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceVariant.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outline.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: cs.onSurface.withOpacity(0.65)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: textTheme.bodySmall?.copyWith(
+                  color: cs.onSurface.withOpacity(0.75),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _PreviewCard extends StatelessWidget {
+  final ColorScheme cs;
   final String partnerName;
   final String activity;
   final String dateText;
 
   const _PreviewCard({
+    required this.cs,
     required this.partnerName,
     required this.activity,
     required this.dateText,
@@ -573,40 +713,42 @@ class _PreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F7FB),
+        color: cs.surfaceVariant.withOpacity(0.55),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6E6F0)),
+        border: Border.all(color: cs.outline.withOpacity(0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             "Vista previa",
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+            style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 10),
-          _previewRow("Con:", partnerName),
+          _previewRow("Con:", partnerName, cs),
           const SizedBox(height: 6),
-          _previewRow("Actividad:", activity),
+          _previewRow("Actividad:", activity, cs),
           const SizedBox(height: 6),
-          _previewRow("Fecha:", dateText),
+          _previewRow("Fecha:", dateText, cs),
         ],
       ),
     );
   }
 
-  static Widget _previewRow(String k, String v) {
+  static Widget _previewRow(String k, String v, ColorScheme cs) {
     return Row(
       children: [
         SizedBox(
           width: 85,
           child: Text(
             k,
-            style: const TextStyle(
-              color: Colors.black54,
+            style: TextStyle(
+              color: cs.onSurface.withOpacity(0.65),
               fontWeight: FontWeight.w800,
               fontSize: 12.5,
             ),
@@ -615,7 +757,11 @@ class _PreviewCard extends StatelessWidget {
         Expanded(
           child: Text(
             v,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+            style: TextStyle(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w800,
+              fontSize: 12.5,
+            ),
           ),
         ),
       ],
@@ -623,7 +769,7 @@ class _PreviewCard extends StatelessWidget {
   }
 }
 
-// ================= Simulated Result Models =================
+// ================= Result Model + Dialog =================
 
 class _ActivityItem {
   final String id;
@@ -661,10 +807,14 @@ class _SuccessDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     final dd = created.date.day.toString().padLeft(2, "0");
     final mm = created.date.month.toString().padLeft(2, "0");
     final yyyy = created.date.year.toString();
-    final dateText = "$dd/$mm/$yyyy";
+    final hh = created.date.hour.toString().padLeft(2, "0");
+    final mi = created.date.minute.toString().padLeft(2, "0");
+    final dateText = "$dd/$mm/$yyyy $hh:$mi";
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -677,14 +827,10 @@ class _SuccessDialog extends StatelessWidget {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFEFF8),
+                color: cs.primary.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(
-                Icons.check_circle,
-                color: Color(0xFFFF4FB8),
-                size: 30,
-              ),
+              child: Icon(Icons.check_circle, color: cs.primary, size: 30),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -695,19 +841,17 @@ class _SuccessDialog extends StatelessWidget {
             Text(
               "Se creó la actividad con ${created.partnerName}.",
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.black54,
+              style: TextStyle(
+                color: cs.onSurface.withOpacity(0.7),
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 14),
-
-            _infoRow("Actividad", created.activityLabel),
+            _infoRow("Actividad", created.activityLabel, cs),
             const SizedBox(height: 8),
-            _infoRow("Fecha", dateText),
+            _infoRow("Fecha", dateText, cs),
             const SizedBox(height: 8),
-            _infoRow("ID", created.id),
-
+            _infoRow("ID", created.id, cs),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -715,8 +859,8 @@ class _SuccessDialog extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFB53CF5),
-                  foregroundColor: Colors.white,
+                  backgroundColor: cs.primary,
+                  foregroundColor: cs.onPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -734,15 +878,15 @@ class _SuccessDialog extends StatelessWidget {
     );
   }
 
-  static Widget _infoRow(String k, String v) {
+  static Widget _infoRow(String k, String v, ColorScheme cs) {
     return Row(
       children: [
         SizedBox(
           width: 80,
           child: Text(
             k,
-            style: const TextStyle(
-              color: Colors.black54,
+            style: TextStyle(
+              color: cs.onSurface.withOpacity(0.65),
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
@@ -751,7 +895,11 @@ class _SuccessDialog extends StatelessWidget {
         Expanded(
           child: Text(
             v,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5),
+            style: TextStyle(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w900,
+              fontSize: 12.5,
+            ),
           ),
         ),
       ],

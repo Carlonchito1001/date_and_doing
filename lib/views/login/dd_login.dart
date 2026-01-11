@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:date_and_doing/auth/google_auth_service.dart';
 import 'package:date_and_doing/views/home/dd_home.dart';
 import '../../auth/facebook_auth_service.dart';
-import 'package:date_and_doing/model/dd_user.dart';
+import 'package:date_and_doing/models/dd_user.dart';
 import 'package:date_and_doing/views/login/login_pages/email_login_page.dart';
 import 'package:date_and_doing/views/login/login_pages/phone_login_page.dart';
 import 'package:flutter/material.dart';

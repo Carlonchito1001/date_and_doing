@@ -1,7 +1,7 @@
 import 'package:date_and_doing/api/api_service.dart';
-import 'package:date_and_doing/service/fcm_service.dart';
-import 'package:date_and_doing/service/session_bootstrap_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/fcm_service.dart';
+import 'package:date_and_doing/services/session_bootstrap_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:date_and_doing/views/home/dd_home.dart';
 import 'package:date_and_doing/views/login/dd_login.dart';
 import 'package:flutter/material.dart';

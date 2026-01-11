@@ -1,5 +1,5 @@
 import 'package:date_and_doing/auth/google_auth_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:date_and_doing/views/login/dd_login.dart';
 import 'package:date_and_doing/views/profile_user/config_profile.dart';
 import 'package:date_and_doing/views/profile_user/edit_profile_page.dart';

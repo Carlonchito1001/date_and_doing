@@ -1,6 +1,6 @@
 import 'package:date_and_doing/api/api_service.dart';
 import 'package:date_and_doing/location/location_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionBootstrapService {

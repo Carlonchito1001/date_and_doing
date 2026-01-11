@@ -1,5 +1,5 @@
 // import 'package:date_and_doing/service/fcm_service.dart';
-import 'package:date_and_doing/service/notificacion_service.dart';
+import 'package:date_and_doing/services/notificacion_service.dart';
 import 'package:date_and_doing/splash_page.dart';
 import 'package:date_and_doing/theme/app_theme.dart';
 import 'package:date_and_doing/theme/theme_controller.dart';

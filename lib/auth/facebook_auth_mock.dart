@@ -1,5 +1,5 @@
 import 'dart:math';
-import '../model/dd_user.dart';
+import '../models/dd_user.dart';
 
 class FacebookAuthMock {
   /// Simula un login con Facebook.

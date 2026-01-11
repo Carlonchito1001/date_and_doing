@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../auth/email_auth_mock.dart';
-import '../../../model/dd_user.dart';
+import '../../../models/dd_user.dart';
 
 class EmailLoginPage extends StatefulWidget {
   const EmailLoginPage({super.key});

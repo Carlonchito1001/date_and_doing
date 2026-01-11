@@ -4,8 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../model/dd_user.dart';
-import '../service/shared_preferences_service.dart';
+import '../models/dd_user.dart';
+import '../services/shared_preferences_service.dart';
 
 class GoogleAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;

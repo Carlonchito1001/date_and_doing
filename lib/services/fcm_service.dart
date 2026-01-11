@@ -1,11 +1,11 @@
 import 'dart:developer';
 import 'package:date_and_doing/api/api_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'notificaCion_service.dart';
+import '../services/notificacion_service.dart';
 
 @pragma('vm:entry-point') // necesario para background en release
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -39,8 +39,8 @@ class FcmService {
     // Obtener token FCM
     currentToken = await _messaging.getToken();
     log('🔥 FCM TOKEN: $currentToken');
-   final prefs = await SharedPreferences.getInstance();
-   await prefs.setString(SharedPreferencesService.fcmToken, currentToken!);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(SharedPreferencesService.fcmToken, currentToken!);
 
     // Si el token se refresca
     FirebaseMessaging.instance.onTokenRefresh.listen((token) async {

@@ -1,7 +1,7 @@
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
-import '../model/dd_user.dart';
+import '../models/dd_user.dart';
 
 class FacebookAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;

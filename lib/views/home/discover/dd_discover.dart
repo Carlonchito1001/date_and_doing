@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'package:date_and_doing/api/api_service.dart';
-import 'package:date_and_doing/service/shared_preferences_service.dart';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 
 import 'widgets/discover_card.dart';
 import 'widgets/discover_actions.dart';

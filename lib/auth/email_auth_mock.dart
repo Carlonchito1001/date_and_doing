@@ -1,5 +1,5 @@
 import 'dart:math';
-import '../model/dd_user.dart';
+import '../models/dd_user.dart';
 
 /// Simula un pequeño "repositorio" en memoria de usuarios registrados por email.
 class _FakeEmailDb {
