@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -56,6 +57,9 @@ class DdChatPage extends StatefulWidget {
 }
 
 class _DdChatPageState extends State<DdChatPage> {
+  int? _currentUserId;
+  bool _loadingMessages = true;
+  String? _messagesError;
   final TextEditingController _messageCtrl = TextEditingController();
 
   final _api = ApiService();
@@ -83,11 +87,8 @@ class _DdChatPageState extends State<DdChatPage> {
   void initState() {
     super.initState();
 
-    final historyMap = buildMockChatHistory();
-    final initialMessages = historyMap[widget.nombre] ?? [];
-    _messages.addAll(initialMessages);
-
     _loadDates();
+    _loadMessages();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndShowAliniUnlocked();
@@ -151,21 +152,13 @@ class _DdChatPageState extends State<DdChatPage> {
         body: text,
       );
 
-      final now = DateTime.now();
-      final horaStr = TimeOfDay.fromDateTime(now).format(context);
-      final fechaStr = now.toIso8601String().substring(0, 10);
+      _messageCtrl.clear();
+
+      // 👉 fuente de verdad: backend
+      await _loadMessages();
 
       if (!mounted) return;
-      setState(() {
-        _messages.add({
-          "autor": currentUser,
-          "text": text,
-          "hora": horaStr,
-          "fecha": fechaStr,
-        });
-        _messageCtrl.clear();
-        _sendingMsg = false;
-      });
+      setState(() => _sendingMsg = false);
     } catch (e) {
       if (!mounted) return;
       setState(() => _sendingMsg = false);
@@ -217,7 +210,8 @@ class _DdChatPageState extends State<DdChatPage> {
   }
 
   bool _esMio(Map<String, dynamic> msg) {
-    return msg["autor"] == currentUser;
+    if (_currentUserId == null) return false;
+    return msg["sender_id"] == _currentUserId;
   }
 
   String _buildConversationText(List<Map<String, dynamic>> msgs) {
@@ -245,7 +239,10 @@ class _DdChatPageState extends State<DdChatPage> {
       if (decoded is Map<String, dynamic>) {
         final map = decoded;
         final txt =
-            map["analysis"] ?? map["output"] ?? map["resumen"] ?? map["message"];
+            map["analysis"] ??
+            map["output"] ??
+            map["resumen"] ??
+            map["message"];
         if (txt is String) {
           return txt.replaceAll(r'\n', '\n').replaceAll(r'\t', '  ');
         }
@@ -254,6 +251,61 @@ class _DdChatPageState extends State<DdChatPage> {
       return body.replaceAll(r'\n', '\n').replaceAll(r'\t', '  ');
     } catch (_) {
       return body.replaceAll(r'\n', '\n').replaceAll(r'\t', '  ');
+    }
+  }
+
+  Future<void> _loadMessages() async {
+    setState(() {
+      _loadingMessages = true;
+      _messagesError = null;
+    });
+
+    try {
+      _currentUserId ??= await SharedPreferencesService().getUserIdOrThrow();
+
+      final rawMessages = await _api.getMessagesByMatch(widget.matchId);
+
+      final filtered = rawMessages
+          .where((m) => m["ddmsg_txt_status"] == "ACTIVO")
+          .toList();
+
+      filtered.sort((a, b) {
+        final da = DateTime.parse(a["ddmsg_timestamp_datecreate"].toString());
+        final db = DateTime.parse(b["ddmsg_timestamp_datecreate"].toString());
+        return da.compareTo(db);
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            filtered.map((m) {
+              final createdAt = DateTime.parse(
+                m["ddmsg_timestamp_datecreate"].toString(),
+              );
+
+              return {
+                "id": m["ddmsg_int_id"],
+                "sender_id": m["use_int_sender"],
+                "autor": (m["use_int_sender"] == _currentUserId)
+                    ? "Yo"
+                    : widget.nombre,
+                "text": m["ddmsg_txt_body"] ?? "",
+                "hora": TimeOfDay.fromDateTime(createdAt).format(context),
+                "fecha": createdAt.toIso8601String().substring(0, 10),
+              };
+            }),
+          );
+        _loadingMessages = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messagesError = e.toString();
+        _loadingMessages = false;
+      });
     }
   }
 
@@ -311,8 +363,10 @@ class _DdChatPageState extends State<DdChatPage> {
         }
       }
 
-      final cleanRest =
-          rest.replaceAll(percentRegex, '').replaceAll('()', '').trim();
+      final cleanRest = rest
+          .replaceAll(percentRegex, '')
+          .replaceAll('()', '')
+          .trim();
 
       if (cleanRest.isNotEmpty) positives.add(cleanRest);
       if (i == 0) overallSummary = cleanRest;
@@ -354,12 +408,12 @@ class _DdChatPageState extends State<DdChatPage> {
         return _parseFromSingleOutput(output, partnerName);
       }
 
-      final overallTitle =
-          (map["overall_title"] ?? "Evaluación General").toString();
-      final toneLabel =
-          (map["overall_label"] ?? map["tone"] ?? "Análisis").toString();
-      final overallSummary =
-          (map["overall_summary"] ?? map["summary"] ?? "").toString();
+      final overallTitle = (map["overall_title"] ?? "Evaluación General")
+          .toString();
+      final toneLabel = (map["overall_label"] ?? map["tone"] ?? "Análisis")
+          .toString();
+      final overallSummary = (map["overall_summary"] ?? map["summary"] ?? "")
+          .toString();
 
       final scoresRaw = map["scores"] ?? map["indicadores"];
       final Map<String, double> scores = {};
@@ -569,8 +623,9 @@ class _DdChatPageState extends State<DdChatPage> {
                           const SizedBox(height: 8),
                           ...result.positives.map(
                             (p) => Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 4.0),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4.0,
+                              ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -705,12 +760,14 @@ class _DdChatPageState extends State<DdChatPage> {
       "current_user": currentUser,
       "conversation_text": _buildConversationText(msgs),
       "messages_raw": msgs
-          .map((m) => {
-                "author": m["autor"],
-                "text": m["text"],
-                "time": m["hora"],
-                "date": m["fecha"],
-              })
+          .map(
+            (m) => {
+              "author": m["autor"],
+              "text": m["text"],
+              "time": m["hora"],
+              "date": m["fecha"],
+            },
+          )
           .toList(),
     };
 
@@ -726,7 +783,7 @@ class _DdChatPageState extends State<DdChatPage> {
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final result =
             _parseAnalysisResult(resp.body, widget.nombre) ??
-                _fallbackAnalysis(resp.body, widget.nombre);
+            _fallbackAnalysis(resp.body, widget.nombre);
         _showAnalysisModal(result);
       } else {
         _toast("IA error ${resp.statusCode}");
@@ -909,7 +966,7 @@ class _DdChatPageState extends State<DdChatPage> {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                        )
+                        ),
                       ],
                     ),
                   ),
@@ -929,8 +986,9 @@ class _DdChatPageState extends State<DdChatPage> {
                   final textColor = cs.onSurface;
 
                   return Align(
-                    alignment:
-                        esMio ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment: esMio
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       padding: const EdgeInsets.symmetric(

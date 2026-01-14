@@ -17,4 +17,10 @@ class ApiEndpoints {
   static String dates = '$baseUrl/dateanddo/dates/';
   static String dateById(int id) => "$baseUrl/dateanddo/dates/$id/";
   static String messages = "$baseUrl/dateanddo/messages/";
+  static String messageById(int id) => "$baseUrl/dateanddo/messages/$id/";
+  static String preferencias = "$baseUrl/dateanddo/preferences/";
+  static String editPreferencias(int id) => "$baseUrl/auth/users/$id/";
+  static String messagesByMatch(int matchId) =>
+      "${messages}?ddm_int_id=$matchId";
+  static String datesByMatch(int matchId) => "${dates}?ddm_int_id=$matchId";
 }

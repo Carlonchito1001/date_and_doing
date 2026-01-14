@@ -1,4 +1,6 @@
+import 'package:date_and_doing/services/shared_preferences_service.dart';
 import 'package:flutter/material.dart';
+import 'package:date_and_doing/api/api_service.dart';
 
 class MatchPreferencesPage extends StatefulWidget {
   const MatchPreferencesPage({super.key});
@@ -8,15 +10,52 @@ class MatchPreferencesPage extends StatefulWidget {
 }
 
 class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
-  // Me gustaría conocer
-  String _targetGender = "todos"; // "mujer" | "hombre" | "todos"
-
-  // Rango de edad
+  String _targetGender = "todos";
   double _minAge = 18;
   double _maxAge = 35;
+  String _lookingFor = "relacion";
 
-  // Qué estás buscando
-  String _lookingFor = "relacion"; // "relacion" | "casual" | "amistad" | "noc"
+  bool _saving = false;
+
+  final _api = ApiService();
+  final _sp = SharedPreferencesService();
+
+  Future<void> _savePreferences() async {
+    if (_saving) return;
+
+    if (_minAge > _maxAge) {
+      _toast("Rango de edad inválido");
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final userId = await _sp.getUserIdOrThrow();
+
+      await _api.updateMatchPreferences(
+        userId: userId,
+        targetGender: _targetGender,
+        minAge: _minAge.toInt(),
+        maxAge: _maxAge.toInt(),
+        lookingFor: _lookingFor,
+      );
+
+      if (!mounted) return;
+      setState(() => _saving = false);
+
+      _toast("✅ Preferencias guardadas");
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _toast("❌ Error: $e");
+    }
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +71,6 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ======== Me gustaría conocer ========
               _SectionHeader(
                 icon: Icons.people_alt_rounded,
                 iconColor: cs.primary,
@@ -82,12 +120,9 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
               const Divider(height: 1),
               const SizedBox(height: 20),
-
-              // ======== Rango de edad ========
               _SectionHeader(
                 icon: Icons.cake_rounded,
                 iconColor: Colors.teal,
@@ -101,7 +136,6 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                 ),
               ),
               const SizedBox(height: 12),
-
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -122,7 +156,6 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                 ),
                 child: Column(
                   children: [
-                    // linea top con edades grandes
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -170,7 +203,6 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Slider min
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -215,10 +247,7 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // ======== Qué estás buscando ========
               _SectionHeader(
                 icon: Icons.favorite_border_rounded,
                 iconColor: Colors.green,
@@ -244,8 +273,7 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                     selectedBorderColor: cs.primary,
                     selectedBg: cs.primary.withOpacity(0.10),
                     width:
-                        (MediaQuery.of(context).size.width - 16 * 2 - 10) /
-                        2, // 2 por fila
+                        (MediaQuery.of(context).size.width - 16 * 2 - 10) / 2,
                   ),
                   _ChoiceCard(
                     label: "Algo casual",
@@ -279,75 +307,19 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
                   ),
                 ],
               ),
-
-              const SizedBox(height: 18),
-
-              // ======== Tarjeta info ========
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.info_outline_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "¿Por qué son importantes las preferencias?",
-                            style: textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green.shade800,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            "Tus preferencias nos ayudan a encontrar los mejores matches para ti. "
-                            "Cuanto más específicas sean, más precisas serán nuestras recomendaciones.\n\n"
-                            "✨ Puedes actualizar tus preferencias en cualquier momento para mejorar tu experiencia.",
-                            style: textTheme.bodySmall?.copyWith(
-                              color: Colors.green.shade800,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
+                height: 52,
                 child: FilledButton(
-                  onPressed: () {
-                    // TODO: guardar preferencias
-                    Navigator.pop(context);
-                  },
-                  child: const Text("Guardar preferencias"),
+                  onPressed: _saving ? null : _savePreferences,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Guardar preferencias"),
                 ),
               ),
             ],
@@ -357,8 +329,6 @@ class _MatchPreferencesPageState extends State<MatchPreferencesPage> {
     );
   }
 }
-
-// ================== WIDGETS REUTILIZABLES ==================
 
 class _SectionHeader extends StatelessWidget {
   final IconData icon;
@@ -428,43 +398,41 @@ class _ChoiceCard extends StatelessWidget {
         ? selectedBorderColor
         : cs.outlineVariant.withOpacity(0.4);
 
-    Widget content = Container(
-      width: width,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor, width: 1.4),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 22,
-            color: isSelected
-                ? selectedBorderColor
-                : cs.onSurface.withOpacity(0.6),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-              color: isSelected
-                  ? selectedBorderColor
-                  : cs.onSurface.withOpacity(0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
-      child: content,
+      child: Container(
+        width: width,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: borderColor, width: 1.4),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: isSelected
+                  ? selectedBorderColor
+                  : cs.onSurface.withOpacity(0.6),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: isSelected
+                    ? selectedBorderColor
+                    : cs.onSurface.withOpacity(0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

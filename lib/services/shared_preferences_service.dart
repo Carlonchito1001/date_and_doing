@@ -32,7 +32,8 @@ class SharedPreferencesService {
     if (email != null) await prefs.setString(keyEmail, email);
     if (phone != null) await prefs.setString(keyPhone, phone);
     if (photoUrl != null) await prefs.setString(keyPhoto, photoUrl);
-    if (firebaseIdToken != null) await prefs.setString(firetoken, firebaseIdToken);
+    if (firebaseIdToken != null)
+      await prefs.setString(firetoken, firebaseIdToken);
 
     await prefs.setString(keyAccessToken, accessToken);
 
@@ -91,5 +92,26 @@ class SharedPreferencesService {
   Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+  }
+
+  Future<int?> getUserId() async {
+    final info = await getUserInfo();
+    if (info == null) return null;
+
+    final v = info["use_int_id"] ?? info["id"] ?? info["user_id"];
+    if (v == null) return null;
+
+    if (v is int) return v;
+    return int.tryParse(v.toString());
+  }
+
+  Future<int> getUserIdOrThrow() async {
+    final id = await getUserId();
+    if (id == null || id <= 0) {
+      throw Exception(
+        "No se encontró use_int_id en user_info. Vuelve a iniciar sesión.",
+      );
+    }
+    return id;
   }
 }

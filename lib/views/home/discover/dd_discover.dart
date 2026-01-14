@@ -1,6 +1,4 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-
 import 'package:date_and_doing/api/api_service.dart';
 import 'package:date_and_doing/services/shared_preferences_service.dart';
 
@@ -29,7 +27,7 @@ class _DdDiscoverState extends State<DdDiscover>
   double _dragRotation = 0;
   bool _isDragging = false;
 
-  static const double _maxRotation = 0.22; // ~12°
+  static const double _maxRotation = 0.22;
   static const double _swipeThreshold = 120;
 
   String? _lastAction;
@@ -38,27 +36,28 @@ class _DdDiscoverState extends State<DdDiscover>
   void initState() {
     super.initState();
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 240),
-    )
-      ..addListener(() {
-        if (_posAnim != null) {
-          setState(() {
-            _dragOffset = _posAnim!.value;
-            _dragRotation = _rotAnim?.value ?? 0;
+    _controller =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 240),
+          )
+          ..addListener(() {
+            if (_posAnim != null) {
+              setState(() {
+                _dragOffset = _posAnim!.value;
+                _dragRotation = _rotAnim?.value ?? 0;
+              });
+            }
+          })
+          ..addStatusListener((status) async {
+            if (status == AnimationStatus.completed) {
+              final action = _lastAction;
+              if (action != null) {
+                await _sendSwipeToBackend(action);
+              }
+              _resetCardPosition();
+            }
           });
-        }
-      })
-      ..addStatusListener((status) async {
-        if (status == AnimationStatus.completed) {
-          final action = _lastAction;
-          if (action != null) {
-            await _sendSwipeToBackend(action);
-          }
-          _resetCardPosition();
-        }
-      });
 
     _loadSuggestions();
   }
@@ -94,9 +93,9 @@ class _DdDiscoverState extends State<DdDiscover>
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error cargando sugerencias: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error cargando sugerencias: $e')));
     }
   }
 
@@ -128,7 +127,7 @@ class _DdDiscoverState extends State<DdDiscover>
       await ApiService().likes(
         accessToken: token,
         targetUserId: targetUserId,
-        type: type, // LIKE | DISLIKE | SUPERLIKE
+        type: type,
       );
 
       if (!mounted) return;
@@ -140,9 +139,9 @@ class _DdDiscoverState extends State<DdDiscover>
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error enviando swipe: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error enviando swipe: $e')));
     } finally {
       if (!mounted) return;
       setState(() => sendingSwipe = false);
@@ -201,13 +200,15 @@ class _DdDiscoverState extends State<DdDiscover>
     _controller.stop();
     _controller.reset();
 
-    _posAnim = Tween<Offset>(begin: _dragOffset, end: Offset.zero).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _posAnim = Tween<Offset>(
+      begin: _dragOffset,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
-    _rotAnim = Tween<double>(begin: _dragRotation, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _rotAnim = Tween<double>(
+      begin: _dragRotation,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     _lastAction = null;
     _controller.forward();
@@ -228,16 +229,17 @@ class _DdDiscoverState extends State<DdDiscover>
         ? Offset(_dragOffset.dx, -(size.height * 1.1))
         : Offset(dx, _dragOffset.dy);
 
-    final double endRot =
-        action == "DISLIKE" ? -_maxRotation : _maxRotation;
+    final double endRot = action == "DISLIKE" ? -_maxRotation : _maxRotation;
 
-    _posAnim = Tween<Offset>(begin: _dragOffset, end: end).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _posAnim = Tween<Offset>(
+      begin: _dragOffset,
+      end: end,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
-    _rotAnim = Tween<double>(begin: _dragRotation, end: endRot).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _rotAnim = Tween<double>(
+      begin: _dragRotation,
+      end: endRot,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _lastAction = action;
     _controller.forward();
@@ -299,6 +301,30 @@ class _DdDiscoverState extends State<DdDiscover>
     );
   }
 
+  bool get _hasNext => (currentIndex + 1) < users.length;
+
+  Map<String, dynamic>? get _nextUser {
+    if (!_hasNext) return null;
+    return users[currentIndex + 1];
+  }
+
+  Widget _buildNextPreviewCard() {
+    final next = _nextUser;
+    if (next == null) return const SizedBox.shrink();
+
+    final dragStrength = (_dragOffset.distance / 220).clamp(0.0, 1.0);
+    final scale = 0.94 + (0.04 * dragStrength);
+    final opacity = 0.88 + (0.12 * dragStrength);
+
+    return Transform.scale(
+      scale: scale,
+      child: Opacity(
+        opacity: opacity,
+        child: DiscoverCard(user: next),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -337,6 +363,7 @@ class _DdDiscoverState extends State<DdDiscover>
                     onPanEnd: _onPanEnd,
                     child: Stack(
                       children: [
+                        _buildNextPreviewCard(),
                         Transform.translate(
                           offset: _dragOffset,
                           child: Transform.rotate(

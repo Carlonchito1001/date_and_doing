@@ -565,4 +565,135 @@ class ApiService {
       "Failed to send message: ${response.statusCode} - ${response.body}",
     );
   }
+
+  Future<Map<String, dynamic>> getPreferences() async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.preferencias),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      "Failed to get preferences: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  Future<Map<String, dynamic>> updateMatchPreferences({
+    required int userId,
+    required String targetGender,
+    required int minAge,
+    required int maxAge,
+    required String lookingFor,
+  }) async {
+    final payload = {
+      "use_txt_pref_target_gender": targetGender,
+      "use_int_pref_min_age": minAge,
+      "use_int_pref_max_age": maxAge,
+      "use_txt_pref_looking_for": lookingFor,
+    };
+
+    final response = await _requestWithRefresh((token) {
+      return http.patch(
+        Uri.parse(ApiEndpoints.editPreferencias(userId)),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode(payload),
+      );
+    });
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      "Failed to update preferences: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getMessagesByMatch(int matchId) async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.messagesByMatch(matchId)),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+
+    throw Exception(
+      "Failed to get messages: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  // ================== TODOS LOS MENSAJES (ALL) ==================
+  Future<List<Map<String, dynamic>>> getAllMessages() async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.messages), // /api/dateanddo/messages/
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+
+    throw Exception(
+      "Failed to get all messages: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  // ================== TODOS LOS MATCHES (para nombre/foto) ==================
+  Future<List<Map<String, dynamic>>> getAllMatches() async {
+    final response = await _requestWithRefresh((token) {
+      return http.get(
+        Uri.parse(ApiEndpoints.allMatches), // /api/dateanddo/matches/
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Service-Code": "dateanddo",
+          "Authorization": "Bearer $token",
+        },
+      );
+    });
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+
+    throw Exception(
+      "Failed to get all matches: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  
 }

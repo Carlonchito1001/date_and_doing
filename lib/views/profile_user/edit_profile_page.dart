@@ -1,7 +1,11 @@
-// lib/views/profile_user/edit_profile_page.dart
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:date_and_doing/api/api_service.dart';
 import 'package:date_and_doing/services/shared_preferences_service.dart';
-import 'package:flutter/material.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -11,23 +15,28 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  String? _selectedCountry;
-  String? _selectedCity;
+  final _api = ApiService();
+  final _sp = SharedPreferencesService();
+  final _picker = ImagePicker();
 
   final TextEditingController _occupationController = TextEditingController();
   final TextEditingController _aboutController = TextEditingController();
 
   String _fullName = '';
   String _ageText = '';
-  String? _avatarUrl;
+  String? _avatarUrl; // URL actual
+  String? _avatarBase64; // NUEVA imagen base64
+
+  String? _selectedCountry;
+  String? _selectedCity;
 
   bool _loading = true;
   bool _saving = false;
 
   static const int _maxAboutChars = 300;
 
-  final List<String> _countries = ["Perú", "México", "Argentina", "Chile"];
-  final List<String> _cities = ["Iquitos", "Lima", "Cusco", "Arequipa"];
+  final _countries = ["Perú", "México", "Argentina", "Chile"];
+  final _cities = ["Iquitos", "Lima", "Cusco", "Arequipa"];
 
   @override
   void initState() {
@@ -42,121 +51,161 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
+  // =================== LOAD USER ===================
+
   Future<void> _loadUserData() async {
-    final sp = SharedPreferencesService();
-    final userInfo = await sp.getUserInfo();
+    final userInfo = await _sp.getUserInfo();
 
     if (!mounted) return;
 
     if (userInfo != null) {
-      final fullname = (userInfo['use_txt_fullname'] ?? '').toString();
-      final age = userInfo['use_txt_age'];
-      final country = userInfo['use_txt_country'];
-      final city = userInfo['use_txt_city'];
-      final occupation = userInfo['use_txt_occupation'];
-      final desc = userInfo['use_txt_description'];
-      final avatar = userInfo['use_txt_avatar'];
-
       setState(() {
-        _fullName = fullname.isEmpty ? 'Usuario' : fullname;
-        _ageText = (age == null || age.toString().trim().isEmpty)
-            ? '—'
-            : age.toString();
+        _fullName = userInfo['use_txt_fullname'] ?? 'Usuario';
+        _ageText = userInfo['use_txt_age']?.toString() ?? '—';
+        _avatarUrl = userInfo['use_txt_avatar'];
 
-        _selectedCountry =
-            (country == null || country.toString().trim().isEmpty)
-            ? null
-            : country.toString();
-        _selectedCity = (city == null || city.toString().trim().isEmpty)
-            ? null
-            : city.toString();
+        _selectedCountry = userInfo['use_txt_country'];
+        _selectedCity = userInfo['use_txt_city'];
 
-        _occupationController.text = (occupation ?? '').toString();
-        _aboutController.text = (desc ?? '').toString();
-
-        _avatarUrl = (avatar == null || avatar.toString().trim().isEmpty)
-            ? null
-            : avatar.toString();
+        _occupationController.text = userInfo['use_txt_occupation'] ?? '';
+        _aboutController.text = userInfo['use_txt_description'] ?? '';
 
         _loading = false;
       });
     } else {
-      setState(() => _loading = false);
+      _loading = false;
     }
   }
+
+  // =================== IMAGE PICK ===================
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picked = await _picker.pickImage(source: source, imageQuality: 100);
+
+    if (picked == null) return;
+
+    final compressed = await _compressImage(File(picked.path));
+    final bytes = await compressed.readAsBytes();
+
+    setState(() {
+      _avatarBase64 = base64Encode(bytes);
+      _avatarUrl = null; // prioridad al base64
+    });
+  }
+
+  Future<File> _compressImage(File file) async {
+    final dir = await getTemporaryDirectory();
+    final targetPath =
+        '${dir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    final result = await FlutterImageCompress.compressAndGetFile(
+      file.absolute.path,
+      targetPath,
+      quality: 75,
+      minWidth: 600,
+      minHeight: 600,
+      format: CompressFormat.jpeg,
+    );
+
+    if (result == null) return file;
+
+    // result може бути XFile (новий) або File (старий). Конвертуємо безпечно:
+    final path = (result is XFile) ? result.path : (result as dynamic).path;
+    return File(path);
+  }
+
+  void _showImagePicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text("Galería"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text("Cámara"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =================== SAVE ===================
 
   Map<String, dynamic> _buildPayload() {
     final Map<String, dynamic> payload = {};
 
-    void putIfValid(String key, dynamic value) {
+    void put(String key, dynamic value) {
       if (value == null) return;
-      if (value is String) {
-        final v = value.trim();
-        if (v.isEmpty) return;
-        payload[key] = v;
-        return;
-      }
+      if (value is String && value.trim().isEmpty) return;
       payload[key] = value;
     }
 
-    putIfValid('use_txt_country', _selectedCountry);
-    putIfValid('use_txt_city', _selectedCity);
-    putIfValid('use_txt_occupation', _occupationController.text);
-    putIfValid('use_txt_description', _aboutController.text);
+    put('use_txt_country', _selectedCountry);
+    put('use_txt_city', _selectedCity);
+    put('use_txt_occupation', _occupationController.text);
+    put('use_txt_description', _aboutController.text);
+
+    // AVATAR
+    if (_avatarBase64 != null) {
+      payload['use_txt_avatar'] = 'data:image/jpeg;base64,$_avatarBase64';
+    } else if (_avatarUrl != null) {
+      payload['use_txt_avatar'] = _avatarUrl;
+    }
 
     return payload;
   }
 
   Future<void> _saveProfile() async {
-    final sp = SharedPreferencesService();
+    final accessToken = await _sp.getAccessToken();
+    final userId = await _sp.getUserId();
 
-    final accessToken = await sp.getAccessToken();
-    final userInfo = await sp.getUserInfo();
-
-    if (accessToken == null || accessToken.isEmpty) {
-      _toast('No hay access token. Vuelve a iniciar sesión.');
+    if (accessToken == null || userId == null) {
+      _toast("Sesión inválida");
       return;
     }
-    if (userInfo == null) {
-      _toast('No hay userInfo guardado.');
-      return;
-    }
-
-    final idRaw = userInfo['use_int_id'];
-    if (idRaw == null) {
-      _toast('userInfo no trae use_int_id.');
-      return;
-    }
-    final int userId = (idRaw as num).toInt();
 
     final payload = _buildPayload();
     if (payload.isEmpty) {
-      _toast('No hay cambios para guardar.');
+      _toast("No hay cambios");
       return;
     }
 
     setState(() => _saving = true);
+
     try {
-      await ApiService().editarPerfil(
+      await _api.editarPerfil(
         accessToken: accessToken,
         perfilData: payload,
         id: userId,
       );
 
-      final refreshed = await ApiService().infoUser(accessToken: accessToken);
-      await sp.saveUserInfo(refreshed);
+      final refreshed = await _api.infoUser(accessToken: accessToken);
+      await _sp.saveUserInfo(refreshed);
 
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-      });
-
-      _toast('Perfil actualizado ✅');
+      _toast("Perfil actualizado ✅");
       Navigator.pop(context, true);
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _toast('Error: $e');
+      _toast("Error: $e");
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -164,378 +213,73 @@ class _EditProfilePageState extends State<EditProfilePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // =================== UI ===================
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final textTheme = theme.textTheme;
+    final cs = Theme.of(context).colorScheme;
 
     if (_loading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text("Editar perfil"),
-          backgroundColor: cs.surface,
-          elevation: 0,
-          centerTitle: true,
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final aboutLength = _aboutController.text.length;
+    final aboutLen = _aboutController.text.length;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Editar perfil"),
-        backgroundColor: cs.surface,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [cs.primary, cs.secondary],
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 48,
-                        backgroundColor: cs.surface,
-                        backgroundImage: _avatarUrl != null
-                            ? NetworkImage(_avatarUrl!)
-                            : null,
-                        child: _avatarUrl == null
-                            ? Icon(
-                                Icons.person,
-                                size: 48,
-                                color: cs.onSurface.withOpacity(0.7),
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: () {},
-                      icon: Icon(Icons.camera_alt_outlined, color: cs.primary),
-                      label: Text(
-                        "Cambiar foto",
-                        style: textTheme.labelLarge?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+      appBar: AppBar(title: const Text("Editar perfil")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: _showImagePicker,
+              child: CircleAvatar(
+                radius: 52,
+                backgroundColor: cs.primaryContainer,
+                backgroundImage: _avatarBase64 != null
+                    ? MemoryImage(base64Decode(_avatarBase64!))
+                    : (_avatarUrl != null
+                          ? NetworkImage(_avatarUrl!) as ImageProvider
+                          : null),
+                child: _avatarBase64 == null && _avatarUrl == null
+                    ? Icon(Icons.person, size: 48, color: cs.onPrimaryContainer)
+                    : null,
               ),
-              const SizedBox(height: 24),
-              _buildLabelWithHint(
-                context,
-                label: "Nombre Completo",
-                hint: "(No editable)",
-              ),
-              const SizedBox(height: 4),
-              _buildReadOnlyField(
-                context,
-                icon: Icons.person_outline,
-                value: _fullName,
-              ),
-              const SizedBox(height: 16),
-              _buildLabelWithHint(
-                context,
-                label: "Edad",
-                hint: "(No editable)",
-              ),
-              const SizedBox(height: 4),
-              _buildReadOnlyField(
-                context,
-                icon: Icons.cake_outlined,
-                value: _ageText == '—' ? '—' : '$_ageText años',
-              ),
-              const SizedBox(height: 24),
-              Divider(color: cs.outlineVariant),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.edit_outlined, size: 18, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    "Información editable",
-                    style: textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text(
-                "País",
-                style: textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              _buildDropdownField(
-                context,
-                value: _selectedCountry,
-                hint: "Selecciona un país",
-                items: _countries,
-                onChanged: (value) => setState(() => _selectedCountry = value),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Ciudad",
-                style: textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              _buildDropdownField(
-                context,
-                value: _selectedCity,
-                hint: "Selecciona una ciudad",
-                items: _cities,
-                onChanged: (value) => setState(() => _selectedCity = value),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Ocupación",
-                style: textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _occupationController,
-                decoration: _inputDecoration(context).copyWith(
-                  prefixIcon: const Icon(Icons.work_outline),
-                  hintText: "Tu ocupación",
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                "Algo sobre mí",
-                style: textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _aboutController,
-                maxLines: 5,
-                maxLength: _maxAboutChars,
-                onChanged: (_) => setState(() {}),
-                decoration: _inputDecoration(
-                  context,
-                ).copyWith(alignLabelWithHint: true, counterText: ""),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Máximo $_maxAboutChars caracteres",
-                    style: textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  Text(
-                    "$aboutLength/$_maxAboutChars",
-                    style: textTheme.bodySmall?.copyWith(
-                      color: aboutLength > _maxAboutChars
-                          ? cs.error
-                          : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildSecurityCard(context),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _saving ? null : _saveProfile,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text("Guardar cambios"),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLabelWithHint(
-    BuildContext context, {
-    required String label,
-    required String hint,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Row(
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          hint,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReadOnlyField(
-    BuildContext context, {
-    required IconData icon,
-    required String value,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return TextField(
-      enabled: false,
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: cs.onSurfaceVariant),
-        hintText: value,
-        filled: true,
-        fillColor: cs.surfaceVariant.withOpacity(0.7),
-        disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: cs.outlineVariant),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: cs.outlineVariant),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 14,
-        ),
-      ),
-      style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-    );
-  }
-
-  Widget _buildDropdownField(
-    BuildContext context, {
-    required String? value,
-    required String hint,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return DropdownButtonFormField<String>(
-      value: value,
-      decoration: _inputDecoration(context),
-      icon: const Icon(Icons.arrow_drop_down),
-      hint: Text(hint),
-      items: items
-          .map((e) => DropdownMenuItem<String>(value: e, child: Text(e)))
-          .toList(),
-      onChanged: onChanged,
-      style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurface),
-    );
-  }
-
-  InputDecoration _inputDecoration(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return InputDecoration(
-      filled: true,
-      fillColor: cs.surfaceVariant.withOpacity(0.7),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: cs.outlineVariant),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: cs.outlineVariant),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: cs.primary, width: 1.4),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-    );
-  }
-
-  Widget _buildSecurityCard(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.shield_outlined, color: cs.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Datos protegidos por seguridad",
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Tu nombre y edad no pueden ser modificados para garantizar la autenticidad y seguridad de todos los usuarios de la plataforma.",
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Si necesitas modificar estos datos, por favor contacta a nuestro equipo de soporte.",
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _showImagePicker,
+              child: const Text("Cambiar foto"),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _occupationController,
+              decoration: const InputDecoration(labelText: "Ocupación"),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _aboutController,
+              maxLength: _maxAboutChars,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: "Sobre mí"),
+              onChanged: (_) => setState(() {}),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text("$aboutLen / $_maxAboutChars"),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _saving ? null : _saveProfile,
+                child: _saving
+                    ? const CircularProgressIndicator()
+                    : const Text("Guardar cambios"),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
