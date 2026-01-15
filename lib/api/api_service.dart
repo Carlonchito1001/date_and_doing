@@ -694,6 +694,4 @@ class ApiService {
       "Failed to get all matches: ${response.statusCode} - ${response.body}",
     );
   }
-
-  
 }

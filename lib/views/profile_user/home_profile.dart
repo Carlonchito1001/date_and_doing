@@ -118,17 +118,17 @@ class _HomeProfileState extends State<HomeProfile> {
               ),
               const SizedBox(height: 24),
 
-              _ProfileOptionCard(
-                icon: Icons.brush_rounded,
-                iconBgGradient: [
-                  cs.primary.withOpacity(0.18),
-                  cs.primaryContainer.withOpacity(0.35),
-                ],
-                iconColor: cs.primary,
-                title: "Personalizar Avatar",
-                subtitle: "Cambia tu foto de perfil",
-                onTap: () {},
-              ),
+              // _ProfileOptionCard(
+              //   icon: Icons.brush_rounded,
+              //   iconBgGradient: [
+              //     cs.primary.withOpacity(0.18),
+              //     cs.primaryContainer.withOpacity(0.35),
+              //   ],
+              //   iconColor: cs.primary,
+              //   title: "Personalizar Avatar",
+              //   subtitle: "Cambia tu foto de perfil",
+              //   onTap: () {},
+              // ),
               const SizedBox(height: 12),
               _ProfileOptionCard(
                 icon: Icons.edit_note_rounded,
@@ -192,7 +192,7 @@ class _HomeProfileState extends State<HomeProfile> {
                 iconColor: Colors.redAccent,
                 title: "Cerrar Sesión",
                 subtitle: "Salir de tu cuenta",
-                onTap: () => logout(context),
+                onTap: () => confirmLogout(context),
               ),
             ],
           ),
@@ -228,6 +228,57 @@ Future<void> logout(BuildContext context) async {
     MaterialPageRoute(builder: (_) => const DdLogin()),
     (_) => false,
   );
+}
+
+Future<void> confirmLogout(BuildContext context) async {
+  final cs = Theme.of(context).colorScheme;
+
+  final bool? ok = await showDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    builder: (ctx) {
+      return AlertDialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(Icons.logout_rounded, color: cs.error),
+            const SizedBox(width: 10),
+            const Text("Cerrar sesión"),
+          ],
+        ),
+        content: Text(
+          "¿Seguro que deseas cerrar sesión? Tendrás que iniciar sesión nuevamente.",
+          style: TextStyle(color: cs.onSurface.withOpacity(0.8)),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              foregroundColor: cs.onSurface.withOpacity(0.8),
+            ),
+            child: const Text("Cancelar"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.error,
+              foregroundColor: cs.onError,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text("Sí, cerrar"),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (ok == true) {
+    await logout(context);
+  }
 }
 
 class _ProfileOptionCard extends StatelessWidget {
