@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "266630102584-ko9a8el71430kpk6rsdlnr1ruc3vinfp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.finatech.date_and_doing",
+            "certificate_hash": "014085ad3898dcca68cb51420d8ce4c0f0a0a38f"
+          }
+        },
+        {
+          "client_id": "266630102584-vpt1ojpjpa1jiplg38s7pim4f8ndb72l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.finatech.date_and_doing",
+            "certificate_hash": "12a9153b9ead067362b6db1e0c8b69fe8fcedeb5"
+          }
+        },
+        {
           "client_id": "266630102584-7h6goiurnifkfsiuidgmbtn2u2nuid1o.apps.googleusercontent.com",
           "client_type": 3
         }

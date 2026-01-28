@@ -296,6 +296,41 @@ class ApiService {
     );
   }
 
+
+
+  Future<Map<String, dynamic>> swipeRaw({
+  required int targetUserId,
+  required String action, // "LIKE" o "DISLIKE"
+}) async {
+  final response = await _requestWithRefresh((token) {
+    return http.post(
+      Uri.parse(ApiEndpoints.swipes),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'use_int_target': targetUserId,
+        'ddw_txt_action': action,
+      }),
+    );
+  });
+
+  // 👇 imprime todo para ver qué llega
+  print("SWIPE STATUS: ${response.statusCode}");
+  print("SWIPE BODY: ${response.body}");
+
+  if (response.statusCode == 200 || response.statusCode == 201) {
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  throw Exception("Swipe failed: ${response.statusCode} - ${response.body}");
+}
+
+
+
+
   // ================== REFRESH TOKEN ==================
   Future<Map<String, dynamic>> refreshToken({
     required String refreshToken,
@@ -692,6 +727,42 @@ class ApiService {
 
     throw Exception(
       "Failed to get all matches: ${response.statusCode} - ${response.body}",
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getLugares(String category) async {
+    final url = ApiEndpoints.lugares(category);
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        "Accept": "application/json",
+        "x-api-key": "ESTAESTUAPIKEYDESCRAPINGDEPAGA",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+
+      // ✅ Tu API devuelve { ok: true, items: [...] }
+      if (decoded is Map<String, dynamic>) {
+        final items = decoded["items"];
+        if (items is List) {
+          return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        return [];
+      }
+
+      // Si algún día devuelve lista directa, también lo soportamos
+      if (decoded is List) {
+        return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+
+      return [];
+    }
+
+    throw Exception(
+      "Failed to get lugares: ${response.statusCode} - ${response.body}",
     );
   }
 }

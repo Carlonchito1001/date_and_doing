@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:date_and_doing/api/api_service.dart';
 
+import 'lugar_picker_sheet.dart';
+
 class DdCreateActivityPage extends StatefulWidget {
   final int matchId;
   final String partnerName;
@@ -21,6 +23,9 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
   bool _isSaving = false;
   String _selectedId = "playa";
 
+  // ✅ Lugar elegido desde la API externa
+  LugarLite? _selectedLugar;
+
   final _dayCtrl = TextEditingController();
   final _monthCtrl = TextEditingController();
   final _yearCtrl = TextEditingController();
@@ -38,6 +43,7 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
     _ActivityItem(id: "concierto", emoji: "🎵", label: "Concierto"),
     _ActivityItem(id: "senderismo", emoji: "🥾", label: "Senderismo"),
     _ActivityItem(id: "picnic", emoji: "🧺", label: "Picnic"),
+    _ActivityItem(id: "tienda", emoji: "🛍️", label: "Tienda"),
     _ActivityItem(id: "otra", emoji: "✨", label: "Otra..."),
   ];
 
@@ -53,11 +59,12 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
   _ActivityItem get _selectedActivity =>
       _activities.firstWhere((a) => a.id == _selectedId);
 
+  bool get _needsPlacePicker => _selectedId == "tienda";
+
   DateTime? _tryParseDate() {
     final dd = int.tryParse(_dayCtrl.text.trim());
     final mm = int.tryParse(_monthCtrl.text.trim());
     final yyyy = int.tryParse(_yearCtrl.text.trim());
-
     if (dd == null || mm == null || yyyy == null) return null;
     if (yyyy < 1900 || yyyy > 2100) return null;
 
@@ -123,6 +130,37 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
+  Future<void> _openLugarPicker() async {
+    // 👇 aquí le pasas la categoría (tienda)
+    final picked = await showModalBottomSheet<LugarLite>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LugarPickerSheet(
+        api: _api,
+        category: _selectedId, // "tienda"
+        selectedId: _selectedLugar?.id,
+        title: "Tiendas disponibles",
+      ),
+    );
+
+    if (picked != null) {
+      setState(() => _selectedLugar = picked);
+
+      // autocompleta el campo Lugar/Nota de forma bonita
+      final title = picked.displayName;
+      final bio = picked.biography.trim();
+      final url = picked.url.trim();
+
+      final lines = <String>[];
+      lines.add("📍 $title");
+      if (bio.isNotEmpty) lines.add("📝 $bio");
+      if (url.isNotEmpty) lines.add("🔗 $url");
+
+      _descCtrl.text = lines.join("\n").trim();
+    }
+  }
+
   Future<void> _createDateReal() async {
     if (_isSaving) return;
 
@@ -136,10 +174,28 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
       return;
     }
 
-    final title = _selectedActivity.label;
-    final description = _descCtrl.text.trim().isEmpty
+    if (_needsPlacePicker && _selectedLugar == null) {
+      _toast("Elige una tienda para tu cita 🛍️");
+      await _openLugarPicker();
+      if (_selectedLugar == null) return;
+    }
+
+    final baseDesc = _descCtrl.text.trim().isEmpty
         ? "Sin descripción"
         : _descCtrl.text.trim();
+
+    final placeName = _selectedLugar?.displayName ?? "";
+    final placeUrl = _selectedLugar?.url ?? "";
+
+    final description = [
+      baseDesc,
+      if (placeName.isNotEmpty) "\n🏪 Lugar: $placeName",
+      if (placeUrl.isNotEmpty) "🔗 $placeUrl",
+    ].join("\n").trim();
+
+    final title = (placeName.isNotEmpty)
+        ? "${_selectedActivity.label} • $placeName"
+        : _selectedActivity.label;
 
     setState(() => _isSaving = true);
 
@@ -215,7 +271,7 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
       backgroundColor: cs.surface,
       body: Column(
         children: [
-          // Top bar (theme gradient)
+          // Top bar
           Container(
             padding: EdgeInsets.only(top: top),
             decoration: BoxDecoration(gradient: headerGradient),
@@ -264,7 +320,6 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                       "📞 Llamando (simulado) a ${widget.partnerName}...",
                     ),
                   ),
-
                   const SizedBox(width: 10),
                 ],
               ),
@@ -299,7 +354,18 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                         label: item.label,
                         selected: selected,
                         cs: cs,
-                        onTap: () => setState(() => _selectedId = item.id),
+                        onTap: () async {
+                          setState(() {
+                            _selectedId = item.id;
+                            // si cambias de actividad, resetea tienda elegida
+                            if (!_needsPlacePicker) _selectedLugar = null;
+                          });
+
+                          // si es tienda, abre selector premium
+                          if (item.id == "tienda") {
+                            await _openLugarPicker();
+                          }
+                        },
                       );
                     },
                   ),
@@ -396,11 +462,27 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                   ),
 
                   const SizedBox(height: 18),
+
+                  // ✅ Lugar seleccionado (cuando es tienda)
+                  if (_needsPlacePicker) ...[
+                    _RequiredLabel(text: "Lugar elegido", cs: cs),
+                    const SizedBox(height: 10),
+                    _SoftTile(
+                      cs: cs,
+                      icon: Icons.storefront,
+                      text: _selectedLugar == null
+                          ? "Elige una tienda (recomendado)"
+                          : "🏪 ${_selectedLugar!.displayName}",
+                      onTap: _openLugarPicker,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
                   _RequiredLabel(text: "Lugar / Nota", cs: cs),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _descCtrl,
-                    maxLines: 2,
+                    maxLines: 3,
                     decoration: InputDecoration(
                       hintText: "Ej: Plaza principal, Cafetería X, etc.",
                       filled: true,
@@ -424,6 +506,7 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                     ),
                     style: textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
+                      height: 1.25,
                     ),
                   ),
 
@@ -433,6 +516,7 @@ class _DdCreateActivityPageState extends State<DdCreateActivityPage> {
                     partnerName: widget.partnerName,
                     activity: _selectedActivity.label,
                     dateText: _prettyDateTimeOrEmpty(context),
+                    placeText: _selectedLugar?.displayName,
                   ),
 
                   const SizedBox(height: 14),
@@ -703,12 +787,14 @@ class _PreviewCard extends StatelessWidget {
   final String partnerName;
   final String activity;
   final String dateText;
+  final String? placeText;
 
   const _PreviewCard({
     required this.cs,
     required this.partnerName,
     required this.activity,
     required this.dateText,
+    this.placeText,
   });
 
   @override
@@ -735,6 +821,10 @@ class _PreviewCard extends StatelessWidget {
           _previewRow("Actividad:", activity, cs),
           const SizedBox(height: 6),
           _previewRow("Fecha:", dateText, cs),
+          if (placeText != null && placeText!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _previewRow("Lugar:", placeText!.trim(), cs),
+          ],
         ],
       ),
     );
